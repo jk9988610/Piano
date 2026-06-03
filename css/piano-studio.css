@@ -257,17 +257,28 @@ body {
 
 
 
-/* 落块播放道（卷轴下方 → 判定线 → 琴键） */
-.piano-play-lane {
+/* 落块区：导航条下方，与琴键横向同步 */
+.fall-notes-stage {
   position: relative;
   flex-shrink: 0;
-  height: var(--note-lane-h, 100px);
+  height: var(--note-lane-h, 120px);
   overflow: hidden;
-  margin: 0 auto;
+  background: linear-gradient(180deg, #12121a 0%, #0e0e14 100%);
+  border-bottom: 1px solid var(--border);
 }
 
-.piano-play-lane-inner {
+
+.fall-notes-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  will-change: transform;
+}
+
+.fall-notes-inner {
   position: relative;
+  width: 100%;
   height: 100%;
 }
 
@@ -336,9 +347,6 @@ body {
 }
 
 .piano-keyboard-scroll {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   overflow-x: auto;
   overflow-y: hidden;
   max-width: 100%;
