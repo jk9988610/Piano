@@ -23,6 +23,7 @@ function createSamplerAsync(preset) {
     const sampler = new Tone.Sampler({
       urls,
       baseUrl,
+      release: 1.2,
       onload: () => resolve(sampler),
       onerror: (err) => reject(err || new Error("Salamander sampler load failed")),
     });

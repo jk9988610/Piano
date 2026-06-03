@@ -43,12 +43,13 @@ export function createController({ engine, eventStore, scheduler, onChange, getP
     }
   }
 
-  function stopNote(midi) {
-    engine.noteOff(midi);
+  /** 松开琴键：仅更新按住状态与录音时间轴，不截断采样自然衰减 */
+  function stopNote(midi, { cutAudio = false } = {}) {
     heldKeys.delete(midi);
     if (scheduler.getTransport() === "recording") {
       eventStore.noteOff(midi, scheduler.recordingNowMs());
     }
+    if (cutAudio) engine.noteOff(midi);
   }
 
   function handleNote(midi, velocity, isOn) {
