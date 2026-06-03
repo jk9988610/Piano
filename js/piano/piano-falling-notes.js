@@ -5,7 +5,7 @@
 import { isBlackKey, KEY_SIZE_PRESETS, DEFAULT_KEY_SIZE_INDEX } from "../piano-keyboard.js";
 
 const MIN_KEY_W = KEY_SIZE_PRESETS[0].w;
-const BLOCK_SCALE = 1.2;
+const BLOCK_SCALE = 1.35;
 const SCROLL_LERP = 0.055;
 const DEFAULT_BLOCK_GAP = Math.round(KEY_SIZE_PRESETS[DEFAULT_KEY_SIZE_INDEX].w * BLOCK_SCALE);
 /** 每块从顶缘到中心过线的固定下落时长（ms） */
@@ -22,6 +22,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
 
   stageEl.innerHTML = "";
   stageEl.classList.add("fall-notes-stage--active");
+  stageEl.setAttribute("aria-hidden", "false");
 
   const track = document.createElement("div");
   track.className = "fall-notes-track";
@@ -61,20 +62,22 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     track.style.transform = `translateX(${boardRect.left - stageRect.left}px)`;
   }
 
+  /** 判定线固定在落块区内部底缘上方，避免溢出被裁切 */
   function syncLayout() {
     syncTrackAlign();
-    const boardRect = board.getBoundingClientRect();
-    const stageRect = stageEl.getBoundingClientRect();
+    const stageH = Math.max(stageEl.clientHeight || 0, 80);
     const gap = gapAboveKeys();
-    const lineTopInStage = boardRect.top - stageRect.top - gap;
-    hitLine.style.top = `${Math.max(8, lineTopInStage)}px`;
-    lineY = Math.max(16, lineTopInStage - 2);
+    lineY = Math.max(40, stageH - gap - 16);
+    hitLine.style.top = `${lineY}px`;
     return lineY;
+  }
+
+  function targetTopFor(size) {
+    return Math.max(8, lineY - size / 2);
   }
 
   function computeBlockMeta(ev, size) {
     const onMs = ev.onMs;
-    const targetTop = Math.max(8, lineY - size / 2);
     const virtualSpawnMs = onMs - FALL_LEAD_MS;
     const spawnMs = Math.max(0, virtualSpawnMs);
 
@@ -87,7 +90,6 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       virtualSpawnMs,
       spawnMs,
       fallDuration: FALL_LEAD_MS,
-      targetTop,
       size,
     };
   }
@@ -101,7 +103,8 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   }
 
   function blockTopY(block, elapsed) {
-    return blockProgress(block, elapsed) * block.targetTop;
+    const progress = blockProgress(block, elapsed);
+    return progress * targetTopFor(block.size);
   }
 
   function blockCenterY(block, elapsed) {
@@ -116,7 +119,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   }
 
   function updateScrollFollow(elapsed) {
-    const active = blocks.find((b) => !b.removed && !b.resolved && elapsed >= b.spawnMs);
+    const active = blocks.find((b) => !b.removed && !b.resolved && elapsed >= b.virtualSpawnMs);
     if (!active) return;
 
     if (followMidi !== active.midi) followMidi = active.midi;
@@ -152,7 +155,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     }, 180);
   }
 
-  function resolveBlock(block, elapsed) {
+  function resolveBlock(block) {
     if (block.resolved) return;
     block.resolved = true;
     flashBlock(block);
@@ -163,13 +166,13 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     const geom = keyboard.getKeyGeometry?.(block.midi);
     if (!geom) return;
 
-    const topY = progress * block.targetTop;
+    const topY = progress * targetTopFor(block.size);
     const x = geom.centerX - block.size / 2;
 
     block.el.style.width = `${block.size}px`;
     block.el.style.height = `${block.size}px`;
     block.el.style.transform = `translate3d(${x}px, ${topY}px, 0)`;
-    block.el.style.zIndex = geom.isBlack ? "3" : "2";
+    block.el.style.zIndex = geom.isBlack ? "5" : "4";
     block.topY = topY;
   }
 
@@ -192,23 +195,24 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       if (block.resolved) continue;
 
       layoutBlock(block, elapsed, progress);
-      const centerY = block.topY + block.size / 2;
+      block.topY = blockTopY(block, elapsed);
 
-      if (!block.centerHit && progress >= 1) {
+      if (mode === "enjoy" && !block.centerHit && elapsed >= block.onMs) {
         block.centerHit = true;
-        if (mode === "enjoy") {
-          onCenterHit?.(block.midi, block.velocity, block);
+        onCenterHit?.(block.midi, block.velocity, block);
+        resolveBlock(block);
+      } else if (mode === "practice" && !block.judged && !block.resolved) {
+        if (block.topY > lineY + block.size / 2) {
+          block.judged = true;
+          block.onMiss?.(block);
+          resolveBlock(block);
         }
-        resolveBlock(block, elapsed);
-      } else if (mode === "practice" && !block.judged && block.topY > lineY + block.size / 2) {
-        block.judged = true;
-        block.onMiss?.(block);
-        resolveBlock(block, elapsed);
       }
     }
 
     if (elapsed >= playbackEndMs && playing) {
       playing = false;
+      stageEl.classList.remove("fall-notes-stage--playing");
       finalizeUnjudged();
       onPlaybackComplete?.();
     }
@@ -221,13 +225,14 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       if (block.judged || block.removed) continue;
       block.judged = true;
       block.onMiss?.(block);
-      if (!block.resolved) resolveBlock(block, playbackEndMs);
+      if (!block.resolved) resolveBlock(block);
     }
   }
 
   function clearAll() {
     playing = false;
     followMidi = null;
+    stageEl.classList.remove("fall-notes-stage--playing");
     if (rafId) cancelAnimationFrame(rafId);
     rafId = 0;
     blocks.forEach((b) => b.el.remove());
@@ -236,7 +241,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   }
 
   function buildBlocks(events) {
-    lineY = syncLayout();
+    syncLayout();
     return events.map((ev, i) => {
       const geom = keyboard.getKeyGeometry?.(ev.midi);
       const size = geom ? blockSize(geom.width) : blockSize(DEFAULT_BLOCK_GAP);
@@ -279,12 +284,16 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       return syncLayout();
     },
 
-    /** 练习模式：找该键最近且未判定的块 */
     findActiveBlock(midi) {
       if (!playing) return null;
       const elapsed = Math.max(0, performance.now() - startAt);
       const candidates = blocks.filter(
-        (b) => b.midi === midi && !b.judged && !b.removed && elapsed >= b.spawnMs && !b.resolved
+        (b) =>
+          b.midi === midi &&
+          !b.judged &&
+          !b.removed &&
+          !b.resolved &&
+          elapsed >= b.virtualSpawnMs
       );
       if (!candidates.length) return null;
 
@@ -302,7 +311,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
 
     markJudged(block) {
       block.judged = true;
-      resolveBlock(block, performance.now() - startAt);
+      resolveBlock(block);
     },
 
     start(events, playbackStartAt, options = {}) {
@@ -313,6 +322,8 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       playing = true;
       startAt = playbackStartAt;
       followMidi = null;
+      stageEl.classList.add("fall-notes-stage--playing");
+      stageEl.setAttribute("aria-hidden", "false");
 
       blocks = buildBlocks(events);
       playbackEndMs = Math.max(...blocks.map((b) => b.offMs)) + 400;
@@ -338,7 +349,8 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       window.removeEventListener("resize", syncLayout);
       ro.disconnect();
       stageEl.innerHTML = "";
-      stageEl.classList.remove("fall-notes-stage--active");
+      stageEl.classList.remove("fall-notes-stage--active", "fall-notes-stage--playing");
+      stageEl.setAttribute("aria-hidden", "true");
     },
   };
 }

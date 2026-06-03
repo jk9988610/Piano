@@ -390,11 +390,11 @@ playbackVisualHooks = {
 
 try {
   if (keyboard && els.fallNotesStage) {
-    judgeHud = createJudgeHud(els.fallNotesStage);
     fallingNotes = createFallingNotesLane(keyboard, els.fallNotesStage, {
       onCenterHit: onEnjoyCenterHit,
       onPlaybackComplete: onPlaybackFinished,
     });
+    judgeHud = createJudgeHud(els.fallNotesStage);
   }
 } catch (err) {
   console.error("Falling notes init failed", err);

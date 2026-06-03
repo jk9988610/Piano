@@ -283,6 +283,7 @@ body {
 /* 落块区：卷轴下缘至判定线（大落块道） */
 .fall-notes-stage {
   flex: 1;
+  min-height: 120px;
   position: relative;
   min-height: 100px;
   overflow: hidden;
@@ -515,4 +516,13 @@ body {
 .practice-judge-hud--total {
   color: #fde68a;
   font-size: 1.5rem;
+}
+
+
+.fall-notes-stage--playing {
+  background: linear-gradient(180deg, var(--bg-panel) 0%, #14142a 40%, #101018 100%);
+}
+
+.fall-notes-stage--playing .piano-note-hit-line {
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.55);
 }
