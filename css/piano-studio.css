@@ -303,6 +303,18 @@ body {
   height: 100%;
 }
 
+
+.piano-note-spawn-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  margin: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  z-index: 11;
+  pointer-events: none;
+}
+
 .piano-note-hit-line {
   position: absolute;
   left: 0;
@@ -319,6 +331,7 @@ body {
   position: absolute;
   top: 0;
   left: 0;
+  box-sizing: border-box;
   border-radius: 4px;
   z-index: 2;
   will-change: transform;
@@ -522,7 +535,19 @@ body {
   background: linear-gradient(180deg, var(--bg-panel) 0%, #14142a 40%, #101018 100%);
 }
 
-.fall-notes-stage--playing .piano-note-hit-line {
+.fall-notes-stage--playing 
+.piano-note-spawn-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  margin: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  z-index: 11;
+  pointer-events: none;
+}
+
+.piano-note-hit-line {
   box-shadow: 0 0 14px rgba(255, 255, 255, 0.55);
 }
 

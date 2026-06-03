@@ -1,11 +1,11 @@
 /**
  * 落块视觉：恒定下落速度，方块中心过判定线时击键（欣赏模式）
- * 练习模式：手动卷轴、动态键宽、判定后消失 / 未判定则落至琴键后
+ * 练习模式：手动卷轴、最小键宽方块、判定后消失 / 未判定则落至琴键后
  */
 import { isBlackKey, KEY_SIZE_PRESETS } from "../piano-keyboard.js";
 
 const MIN_KEY_W = KEY_SIZE_PRESETS[0].w;
-const BLOCK_SCALE = 1.35;
+const SPAWN_TOP = 8;
 const SCROLL_LERP = 0.055;
 /** 每块从顶缘到中心过线的固定下落时长（ms）；播放开始后先经历此预备段再进入曲谱时间 */
 export const FALL_LEAD_MS = 2400;
@@ -29,6 +29,10 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   const inner = document.createElement("div");
   inner.className = "fall-notes-inner";
 
+  const spawnLine = document.createElement("div");
+  spawnLine.className = "piano-note-spawn-line";
+  stageEl.appendChild(spawnLine);
+
   const hitLine = document.createElement("div");
   hitLine.className = "piano-note-hit-line";
   stageEl.appendChild(hitLine);
@@ -44,21 +48,15 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   let lineY = 0;
   let playbackEndMs = 0;
 
-  /** 高度固定为最小键宽时的正方形高度；宽度随琴键缩放 */
-  const BLOCK_HEIGHT = Math.max(MIN_KEY_W, Math.round(MIN_KEY_W * BLOCK_SCALE));
-
-  function blockWidth(keyWidth) {
-    return Math.max(MIN_KEY_W, Math.round(keyWidth * BLOCK_SCALE));
-  }
+  /** 宽高对齐最小琴键宽度 */
+  const BLOCK_SIZE = MIN_KEY_W;
 
   function currentBlockDims(block) {
-    const geom = keyboard.getKeyGeometry?.(block.midi);
-    const width = geom ? blockWidth(geom.width) : block.width ?? blockWidth(MIN_KEY_W);
-    return { width, height: BLOCK_HEIGHT };
+    return { width: BLOCK_SIZE, height: BLOCK_SIZE };
   }
 
   function gapAboveKeys() {
-    return BLOCK_HEIGHT;
+    return BLOCK_SIZE;
   }
 
   function syncTrackAlign() {
@@ -74,23 +72,28 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     const stageH = Math.max(stageEl.clientHeight || 0, 80);
     const gap = gapAboveKeys();
     lineY = Math.max(40, stageH - gap - 16);
+    spawnLine.style.top = `${SPAWN_TOP}px`;
     hitLine.style.top = `${lineY}px`;
     return lineY;
   }
 
   function targetTopFor() {
-    return Math.max(8, lineY - BLOCK_HEIGHT / 2);
+    return lineY - BLOCK_SIZE / 2;
+  }
+
+  function fallDistance() {
+    return Math.max(1, targetTopFor() - SPAWN_TOP);
   }
 
   function fallSpeedPxPerMs() {
-    return targetTopFor() / FALL_LEAD_MS;
+    return fallDistance() / FALL_LEAD_MS;
   }
 
   /** 未判定方块完全落入琴键后的移除阈值（stage 坐标） */
   function hideThresholdY() {
     const stageH = Math.max(stageEl.clientHeight || 0, 80);
     const keyH = board.offsetHeight || 86;
-    return stageH + keyH - BLOCK_HEIGHT;
+    return stageH + keyH - BLOCK_SIZE;
   }
 
   function computeBlockMeta(ev, width) {
@@ -128,7 +131,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   }
 
   function blockCenterY(block, elapsed) {
-    return blockTopY(block, elapsed) + BLOCK_HEIGHT / 2;
+    return blockTopY(block, elapsed) + BLOCK_SIZE / 2;
   }
 
   function targetScrollForMidi(midi) {
@@ -226,8 +229,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     for (const block of blocks) {
       if (block.removed) continue;
 
-      const progress = blockProgress(block, elapsed);
-      if (progress <= 0) {
+      if (elapsed < block.spawnMs) {
         block.el.style.opacity = "0";
         continue;
       }
@@ -297,9 +299,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   function buildBlocks(events) {
     syncLayout();
     return events.map((ev, i) => {
-      const geom = keyboard.getKeyGeometry?.(ev.midi);
-      const width = geom ? blockWidth(geom.width) : blockWidth(MIN_KEY_W);
-      const meta = computeBlockMeta({ ...ev, id: ev.id ?? `n${i}` }, width);
+      const meta = computeBlockMeta({ ...ev, id: ev.id ?? `n${i}` }, BLOCK_SIZE);
       return {
         ...meta,
         el: createBlockEl(isBlackKey(ev.midi)),
@@ -348,26 +348,31 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       if (!playing) return null;
       const elapsed = Math.max(0, performance.now() - startAt);
       const candidates = blocks.filter(
-        (b) =>
-          b.midi === midi &&
-          !b.judged &&
-          !b.removed &&
-          !b.resolved &&
-          elapsed >= b.spawnMs
+        (b) => !b.judged && !b.removed && !b.resolved && elapsed >= b.spawnMs
       );
       if (!candidates.length) return null;
 
-      let best = candidates[0];
-      let bestDist = Math.abs(blockCenterY(best, elapsed) - lineY);
+      let nearest = candidates[0];
+      let bestDist = Math.abs(blockCenterY(nearest, elapsed) - lineY);
       for (let i = 1; i < candidates.length; i += 1) {
         const d = Math.abs(blockCenterY(candidates[i], elapsed) - lineY);
         if (d < bestDist) {
-          best = candidates[i];
+          nearest = candidates[i];
           bestDist = d;
         }
       }
-      const { width, height } = currentBlockDims(best);
-      return { block: best, topY: blockTopY(best, elapsed), lineY, width, height, size: height, elapsed };
+      if (nearest.midi !== midi) return null;
+
+      const { width, height } = currentBlockDims(nearest);
+      return {
+        block: nearest,
+        topY: blockTopY(nearest, elapsed),
+        lineY,
+        width,
+        height,
+        size: height,
+        elapsed,
+      };
     },
 
     markJudged(block) {
@@ -392,6 +397,12 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
 
       for (const block of blocks) {
         block.onMiss = options.onBlockMiss ?? null;
+      }
+
+      syncLayout();
+      for (const block of blocks) {
+        layoutBlock(block, block.spawnMs);
+        block.el.style.opacity = block.spawnMs <= 0 ? "1" : "0";
       }
 
       rafId = requestAnimationFrame(tick);
