@@ -6,6 +6,7 @@ import { createScheduler, formatTimeMs } from "./piano-scheduler.js";
 import { createController } from "./piano-controller.js";
 import { createI18n, resolveLang } from "./piano-i18n.js";
 import { createKeyboardNav } from "./piano-keyboard-nav.js";
+import { installAppGuards, registerServiceWorker } from "./piano-app-guard.js";
 
 const APP_VERSION = document.querySelector('meta[name="piano-app-version"]')?.content || "0.1.0";
 
@@ -33,7 +34,11 @@ const els = {
 const i18n = createI18n(resolveLang());
 i18n.apply();
 
+installAppGuards(document.getElementById("app"));
+registerServiceWorker(APP_VERSION);
+
 const engine = createEngine();
+const samplesLoadPromise = engine.ensureLoaded();
 const eventStore = createEventStore(createEmptyProject("新演奏", APP_VERSION));
 const scheduler = createScheduler(engine, eventStore);
 const controller = createController({ engine, eventStore, scheduler, onChange: refreshUI });
@@ -103,7 +108,7 @@ function refreshUI() {
 
   if (transport === "recording") els.status.textContent = i18n.t("status.recording");
   else if (transport === "playing") els.status.textContent = i18n.t("status.playing");
-  else els.status.textContent = engine.isLoaded() ? i18n.t("status.ready") : i18n.t("status.loading");
+  else els.status.textContent = engine.isLoaded() ? i18n.t("status.ready") : i18n.t("status.loadingSamples");
 }
 
 function noteLabel(midi) {
@@ -188,8 +193,7 @@ els.btnStopPlay.addEventListener("click", () => controller.stopPlayback());
 loadVersionBadge();
 initFullscreen();
 
-engine
-  .ensureLoaded()
+samplesLoadPromise
   .then(() => {
     controller.initMidi();
     refreshUI();
