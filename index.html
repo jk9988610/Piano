@@ -3,22 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="piano-app-version" content="0.1.4" />
+    <meta name="piano-app-version" content="0.1.5" />
     <title>钢琴工作室 · Piano Studio</title>
-    <link rel="stylesheet" href="css/piano-studio.css?v=0.1.4" />
+    <link rel="stylesheet" href="css/piano-studio.css?v=0.1.5" />
   </head>
   <body>
     <div id="app" class="app-shell">
       <header class="app-header">
         <h1 class="app-title" data-i18n="app.title">钢琴工作室</h1>
-        <span id="versionBadge" class="version-badge">v0.1.4</span>
+        <span id="versionBadge" class="version-badge">v0.1.5</span>
         <div class="file-actions">
           <button type="button" id="btnNew" class="btn btn-ghost" data-i18n="file.new">新建</button>
           <button type="button" id="btnOpen" class="btn btn-ghost" data-i18n="file.open">打开</button>
           <button type="button" id="btnSave" class="btn btn-ghost" data-i18n="file.save">保存</button>
         </div>
         <div class="header-actions">
-          <button type="button" id="btnFullscreen" class="btn btn-icon" title="全屏" aria-label="全屏" data-i18n-title="fullscreen.enter">⛶</button>
+          <button type="button" id="btnFullscreen" class="btn btn-icon" title="全屏" aria-label="全屏">⛶</button>
           <span id="statusText" class="status-text" data-i18n="status.ready">就绪</span>
         </div>
       </header>
@@ -31,6 +31,15 @@
         <span id="timeDisplay" class="time-display">00:00 / 00:00</span>
       </section>
 
+      <section class="keyboard-nav-bar" aria-label="键盘导航">
+        <button type="button" id="btnKeyZoomOut" class="btn btn-icon btn-zoom" title="缩小琴键" aria-label="缩小琴键">−</button>
+        <div id="keyboardNavTrack" class="keyboard-nav-track">
+          <div id="keyboardMiniMap" class="keyboard-nav-minimap"></div>
+          <div id="keyboardNavViewport" class="keyboard-nav-viewport"></div>
+        </div>
+        <button type="button" id="btnKeyZoomIn" class="btn btn-icon btn-zoom" title="放大琴键" aria-label="放大琴键">+</button>
+      </section>
+
       <main class="keyboard-area">
         <div id="keyboardHost"></div>
       </main>
@@ -38,7 +47,7 @@
 
     <input type="file" id="fileInput" accept=".hfproj,application/json" hidden />
 
-    <script src="js/tone.min.js?v=0.1.4"></script>
-    <script type="module" src="js/piano/piano-studio.js?v=0.1.4"></script>
+    <script src="js/tone.min.js?v=0.1.5"></script>
+    <script type="module" src="js/piano/piano-studio.js?v=0.1.5"></script>
   </body>
 </html>

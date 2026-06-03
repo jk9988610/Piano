@@ -5,6 +5,7 @@ import { downloadProject, parseProject, readFileAsText, errorMessage } from "./p
 import { createScheduler, formatTimeMs } from "./piano-scheduler.js";
 import { createController } from "./piano-controller.js";
 import { createI18n, resolveLang } from "./piano-i18n.js";
+import { createKeyboardNav } from "./piano-keyboard-nav.js";
 
 const APP_VERSION = document.querySelector('meta[name="piano-app-version"]')?.content || "0.1.0";
 
@@ -22,6 +23,11 @@ const els = {
   btnPlay: document.getElementById("btnPlay"),
   btnStopPlay: document.getElementById("btnStopPlay"),
   btnFullscreen: document.getElementById("btnFullscreen"),
+  btnKeyZoomOut: document.getElementById("btnKeyZoomOut"),
+  btnKeyZoomIn: document.getElementById("btnKeyZoomIn"),
+  keyboardNavTrack: document.getElementById("keyboardNavTrack"),
+  keyboardMiniMap: document.getElementById("keyboardMiniMap"),
+  keyboardNavViewport: document.getElementById("keyboardNavViewport"),
 };
 
 const i18n = createI18n(resolveLang());
@@ -104,12 +110,26 @@ function noteLabel(midi) {
   return Tone.Frequency(midi, "midi").toNote();
 }
 
+let keyboardNav = null;
+
 const keyboard = renderKeyboard(els.keyboardHost, {
   onNoteDown: (midi, vel) => controller.handleNote(midi, vel, true),
   onNoteUp: (midi) => controller.handleNote(midi, 64, false),
   onFirstInteraction: () => controller.ensureAudioReady().catch(() => {}),
+  onLayoutChange: () => keyboardNav?.refresh(),
   labelFor: noteLabel,
 });
+
+if (keyboard && els.keyboardNavTrack) {
+  keyboardNav = createKeyboardNav({
+    trackEl: els.keyboardNavTrack,
+    viewportEl: els.keyboardNavViewport,
+    miniEl: els.keyboardMiniMap,
+    btnZoomOut: els.btnKeyZoomOut,
+    btnZoomIn: els.btnKeyZoomIn,
+    keyboard,
+  });
+}
 
 els.btnNew.addEventListener("click", () => {
   if (!confirm(i18n.t("confirm.new"))) return;
@@ -173,6 +193,7 @@ engine
   .then(() => {
     controller.initMidi();
     refreshUI();
+    keyboardNav?.refresh();
   })
   .catch((err) => {
     els.status.textContent = String(err.message || err);
