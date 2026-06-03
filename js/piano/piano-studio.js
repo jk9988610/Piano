@@ -7,6 +7,7 @@ import { createScheduler, formatTimeMs } from "./piano-scheduler.js";
 import { createController } from "./piano-controller.js";
 import { createI18n, resolveLang } from "./piano-i18n.js";
 import { createKeyboardNav } from "./piano-keyboard-nav.js";
+import { createFallingNotesLane } from "./piano-falling-notes.js";
 
 const APP_VERSION = document.querySelector('meta[name="piano-app-version"]')?.content || "0.1.0";
 
@@ -121,6 +122,7 @@ function noteLabel(midi) {
 }
 
 function importScoreProject(project) {
+  fallingNotes?.stop();
   scheduler.stopPlayback();
   keyboard?.releaseAll();
   eventStore.setProject(project);
@@ -138,14 +140,27 @@ async function loadScoreText(text) {
 }
 
 let keyboardNav = null;
+let fallingNotes = null;
 
 const keyboard = renderKeyboard(els.keyboardHost, {
   onNoteDown: (midi, vel) => controller.handleNote(midi, vel, true),
   onNoteUp: (midi) => controller.handleNote(midi, 64, false),
   onFirstInteraction: () => controller.ensureAudioReady().catch(() => {}),
-  onLayoutChange: () => keyboardNav?.refresh(),
+  onLayoutChange: () => {
+    keyboardNav?.refresh();
+    fallingNotes?.refresh();
+  },
   labelFor: noteLabel,
 });
+
+if (keyboard) {
+  fallingNotes = createFallingNotesLane(keyboard);
+}
+
+const playbackVisualHooks = {
+  onPlaybackStart: (events, startAt) => fallingNotes?.start(events, startAt),
+  onPlaybackStop: () => fallingNotes?.stop(),
+};
 
 if (keyboard && els.keyboardNavTrack) {
   keyboardNav = createKeyboardNav({
@@ -160,6 +175,7 @@ if (keyboard && els.keyboardNavTrack) {
 
 els.btnNew.addEventListener("click", () => {
   if (!confirm(i18n.t("confirm.new"))) return;
+  fallingNotes?.stop();
   scheduler.stopPlayback();
   keyboard?.releaseAll();
   eventStore.reset();
@@ -180,6 +196,7 @@ els.fileInput.addEventListener("change", async () => {
       alert(errorMessage(result.error, i18n.t.bind(i18n)));
       return;
     }
+    fallingNotes?.stop();
     scheduler.stopPlayback();
     keyboard?.releaseAll();
     eventStore.setProject(result.project);
@@ -231,10 +248,11 @@ els.btnStopRec.addEventListener("click", () => {
 });
 
 els.btnPlay.addEventListener("click", async () => {
+  fallingNotes?.stop();
   keyboard?.releaseAll();
   await controller.ensureAudioReady();
   scoreLoadedHint = false;
-  controller.startPlayback();
+  controller.startPlayback(playbackVisualHooks);
   refreshUI();
 });
 
