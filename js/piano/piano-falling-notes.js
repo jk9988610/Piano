@@ -344,7 +344,8 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       return syncLayout();
     },
 
-    findActiveBlock(midi) {
+    /** 绝对距离：返回中心最接近判定线的未判定方块（与按键音高无关） */
+    findNearestBlock() {
       if (!playing) return null;
       const elapsed = Math.max(0, performance.now() - startAt);
       const candidates = blocks.filter(
@@ -361,7 +362,6 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
           bestDist = d;
         }
       }
-      if (nearest.midi !== midi) return null;
 
       const { width, height } = currentBlockDims(nearest);
       return {

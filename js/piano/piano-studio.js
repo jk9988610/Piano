@@ -62,7 +62,7 @@ const controller = createController({
   scheduler,
   onChange: refreshUI,
   getPlayMode: () => playMode,
-  onPracticeHit: (midi) => handlePracticeHit(midi),
+  onPracticeHit: () => handlePracticeHit(),
 });
 
 let scoreLoadedHint = false;
@@ -109,10 +109,10 @@ function resetPracticeSession() {
   judgeHud?.clear();
 }
 
-function handlePracticeHit(midi) {
+function handlePracticeHit() {
   if (playMode !== "practice" || scheduler.getTransport() !== "playing") return;
 
-  const active = fallingNotes?.findActiveBlock(midi);
+  const active = fallingNotes?.findNearestBlock();
   if (!active || !practiceSession) {
     judgeHud?.flash(JUDGE.MISS);
     return;
@@ -125,8 +125,8 @@ function handlePracticeHit(midi) {
   block.judged = true;
   fallingNotes.markJudged(block);
   judgeHud?.flash(result.judge);
-  keyboard?.pressVisual(midi);
-  window.setTimeout(() => keyboard?.releaseVisual(midi), 120);
+  keyboard?.pressVisual(block.midi);
+  window.setTimeout(() => keyboard?.releaseVisual(block.midi), 120);
 }
 
 function initFullscreen() {
