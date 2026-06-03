@@ -5,6 +5,12 @@
 **日期**：2026-06-02  
 **原则**：钢琴体系完全独立；P0 不使用 BPM、步进、鼓点主路径；和弦与乐谱不在 P0。
 
+### 本仓库语境（2026-06-03）
+
+- **Piano** 为新建仓库，**从零实现** P0；尚无应用代码。
+- 下文「legacy-rhythm」指 Card-World 内 HarmonyForge 的步进/鼓体系；**本仓库不包含该代码**，只需保证 piano-core 自洽、且不预留对其的依赖。
+- P0 验收在 **独立 `index.html`** 完成；Card-World iframe 嵌入列为 P0 之后阶段（见 [ARCHITECTURE.md](./ARCHITECTURE.md)）。
+
 ---
 
 ## 1. 决策摘要（全部锁定）
@@ -20,8 +26,8 @@
 | 量化 | **P0 不做**；P1 可选按 50ms 网格吸附 |
 | 旧 `.hfproj` | **拒绝加载**步进工程；提示新建钢琴会话 |
 | 文件扩展名 | 仍用 **`.hfproj`**，靠根级 `schema` 区分 |
-| 默认入口 | 音乐台 **一律** `mode=piano`（缺省等同 piano） |
-| 采样引擎 | 仅 **INS-008** 钢琴；P0 不预加载鼓采样 |
+| 默认入口 | 本仓库 **`index.html`**；嵌入 Card-World 时音乐台带 `mode=piano`（阶段 B） |
+| 采样引擎 | 仅钢琴（对内 ID：`INS-008` 或等价 piano 引擎）；P0 不预加载鼓采样 |
 | 和弦垫 / 乐谱 | **P2 / P3**，不进入 P0 范围 |
 
 ---
@@ -31,11 +37,11 @@
 ### 2.1 名称与心智
 
 - 对用户：**钢琴工作室**（Piano Studio）
-- 对团队：**piano-core** 体系；**legacy-rhythm**（步进/鼓/编曲）在 P0 **冻结、屏蔽**
+- 对团队：**piano-core** 体系；**legacy-rhythm**（步进/鼓/编曲）在 P0 **不存在于本仓库**
 
 ### 2.2 P0 用户故事
 
-1. 打开音乐入口 → 全屏 88 键，可直接弹奏。  
+1. 打开 `index.html` → 全屏 88 键，可直接弹奏。  
 2. 按住键的时长与响声一致。  
 3. 点「录制」→ 再弹 → 点「停止」→ 点「播放」听到与弹奏一致的时值。  
 4. 保存 / 加载 `.hfproj`（钢琴会话）。  
@@ -51,23 +57,23 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Piano Studio (P0 主世界)                                │
+│  Piano Studio (P0 主世界 — 本仓库)                       │
 │  UI → PianoController → PianoEventStore → PianoScheduler │
 │                              ↓                           │
-│                         InstrumentEngine (INS-008)       │
+│                         PianoEngine (钢琴采样)           │
 └─────────────────────────────────────────────────────────┘
-          ✕ 无读写
+          ✕ 无代码、无依赖
 ┌─────────────────────────────────────────────────────────┐
-│  Legacy Rhythm (冻结)                                    │
+│  Legacy Rhythm（仅 Card-World，本仓库不涉及）            │
 │  Sequencer / Arranger / Pattern / Drum samples           │
 └─────────────────────────────────────────────────────────┘
 ```
 
 **硬规则**
 
-- `piano-core` 禁止 import 或调用 `Sequencer.toggleStep`、`Arranger`、步进渲染。  
-- `legacy-rhythm` 在 `mode=piano` 下 **不初始化**（脚本可不加载或 `if (false)` 门闸）。  
-- 共用仅限：宿主壳（Card World iframe）、日志、版本号、文件选择器。
+- piano-core **禁止**引入或调用步进音序、编曲时间轴、BPM 相关逻辑。  
+- 本仓库 **不携带** legacy-rhythm 代码；Card-World 嵌入阶段亦不得在本仓库内加载 HarmonyForge 步进模块。  
+- 共用层（P0）：浏览器文件 API、可选日志；Card-World iframe 壳为 **嵌入阶段** 再接入。
 
 ---
 
@@ -83,8 +89,8 @@
     "title": "未命名演奏",
     "createdAt": "2026-06-02T12:00:00.000Z",
     "modifiedAt": "2026-06-02T12:00:00.000Z",
-    "app": "harmonyforge",
-    "appVersion": "0.14.0"
+    "app": "piano-studio",
+    "appVersion": "0.1.0"
   },
   "session": {
     "instrumentId": "INS-008",
@@ -98,7 +104,7 @@
 |------|------|------|
 | `schema` | `"piano-v1"` | **必填**；解析器首字段校验 |
 | `formatVersion` | `1` | 会话结构版本；与 app 版本解耦 |
-| `session.instrumentId` | `"INS-008"` | P0 固定钢琴 |
+| `session.instrumentId` | `"INS-008"` | P0 固定钢琴（与 Card-World 采样 ID 对齐） |
 | `session.durationMs` | number | 等于最后一条 note 的 `offMs`（或 `onMs` 若无 off） |
 | `session.events` | `PianoNoteEvent[]` | 按 `onMs` 升序 |
 
@@ -147,25 +153,32 @@
 
 ## 6. 入口与路由（拍板）
 
-### 6.1 URL / 启动参数
+### 6.1 阶段 A：本仓库独立入口（P0 主路径）
 
 ```
-embedded/harmonyforge/index.html?mode=piano&lang=zh-Hans&v=…
+index.html?lang=zh-Hans
 ```
 
 | 参数 | 默认 | 说明 |
 |------|------|------|
-| `mode` | `piano` | 仅实现 `piano`；其他值回退 `piano` |
-| `lang` | 宿主传入 | 不变 |
+| `lang` | `zh-Hans` | `zh-Hans` / `en`；影响 UI 文案 |
 
-Card World `musicEmbedUrl()` **固定** 带 `mode=piano`。
+本地预览：`python3 -m http.server 8080`，访问 `http://localhost:8080/`。
 
-### 6.2 页面壳
+### 6.2 阶段 B：Card-World 嵌入（P0 验收后）
 
-- **加载**：`piano-studio.css`、`piano-controller.js`、`piano-event-store.js`、`piano-scheduler.js`、`piano-keyboard.js`（88 键 UI 可复用现有实现）。  
-- **不加载**（P0）：`sequencer.js`、`arranger.js`、步进相关 DOM 模块（或 HTML 中 `hidden` + 不执行 init）。
+```
+embedded/piano-studio/index.html?lang=zh-Hans&v=…
+```
 
-### 6.3 默认工程
+Card World `musicEmbedUrl()` 指向上述路径；**不在 P0 阻塞项内**。
+
+### 6.3 页面壳（本仓库须加载）
+
+- **加载**：`piano-studio.css`、`piano-engine.js`、`piano-keyboard.js`、`piano/piano-studio.js` 及其子模块（controller / event-store / scheduler / project-io）。  
+- **不加载**（P0）：任何步进、编曲、鼓采样、BPM 相关脚本或 DOM。
+
+### 6.4 默认工程
 
 首次进入内存态：
 
@@ -228,12 +241,12 @@ pianoEngine.noteOn(midi, velocity, atAudioTime)
 pianoEngine.noteOff(midi, atAudioTime)
 ```
 
-禁止走 `playTrackSound(trackId, stepIndex)`。
+禁止引入步进播放 API（如按步进格触发音符）。
 
 ### 8.3 资源
 
-- 启动仅 `ensureLoaded("INS-008")`。  
-- 鼓类 INS-001…006 P0 **不加载**。
+- 启动仅加载钢琴采样。  
+- 鼓类及其他乐器 P0 **不加载**。
 
 ### 8.4 MIDI 输入
 
@@ -242,22 +255,25 @@ pianoEngine.noteOff(midi, atAudioTime)
 
 ---
 
-## 9. 模块划分（实现时目录建议）
+## 9. 模块划分（本仓库目录）
 
 ```
-embedded/harmonyforge/
-  js/piano/
-    piano-studio.js      # 入口：mode=piano 时 init
+index.html
+css/piano-studio.css
+js/
+  piano-engine.js        # Web Audio / Tone.js；noteOn、noteOff
+  piano-keyboard.js      # 88 键 UI（21–108）；pointer + keyboard 事件
+  piano/
+    piano-studio.js      # 应用入口、bootstrap
     piano-controller.js  # 键盘/MIDI/transport 状态机
     piano-event-store.js # events CRUD、校验、durationMs
     piano-scheduler.js   # 录制时钟、回放调度
     piano-project-io.js  # 保存/加载 .hfproj
-  js/piano-keyboard.js   # 88 键 UI（可迁入 piano/）
-  css/piano-studio.css
-  index-piano.html       # 可选：极简 HTML，仅钢琴壳（推荐 P0 用 query 门闸亦可）
+samples/                 # 钢琴采样文件（P0 仅此）
+VERSION                  # 应用 semver，写入 meta.appVersion
 ```
 
-**legacy** 文件保留在仓库，但 `piano-studio.js` 不引用。
+实现时可参考 Card-World `embedded/harmonyforge/js/piano-keyboard.js` 的 88 键布局，但代码归属本仓库，不依赖外部仓库运行时。
 
 ---
 
@@ -265,21 +281,22 @@ embedded/harmonyforge/
 
 | 项 | 值 |
 |----|-----|
-| 首个钢琴主导 App 版本 | **0.14.0**（与 0.13.x 步进线切割） |
-| `formatVersion` | `1` |
-| SW / 缓存 | bump；`mode=piano` 资源集独立 precache 列表（后续实现） |
+| 本仓库 App 版本（`VERSION` / `meta.appVersion`） | 从 **0.1.0** 起 |
+| 会话 `formatVersion` | **`1`**（与 App 版本解耦） |
+| Card-World 嵌入对齐版本 | **0.14.0**（阶段 B；与 HarmonyForge 0.13.x 步进线切割） |
+| 部署 | P0：GitHub Pages 或静态托管；SW / precache **非 P0** |
 
 ---
 
 ## 11. 验收清单（P0 Done）
 
-- [ ] 默认入口仅见钢琴工作室 UI  
+- [ ] `index.html` 本地可打开，仅见钢琴工作室 UI（无 BPM / 步进 / 鼓）  
 - [ ] 88 键：按下发声、松开止音，时长正确  
 - [ ] 录制 → 播放：时值一致（误差 < 30ms）  
-- [ ] 保存再打开：events 完整  
-- [ ] 加载旧步进 `.hfproj`：明确拒绝  
-- [ ] 无 BPM/步进/鼓 UI；无对 `Sequencer` 的 init  
-- [ ] 仅 INS-008 采样加载  
+- [ ] 保存再打开：events 完整；`schema: piano-v1`  
+- [ ] 加载 legacy 步进 `.hfproj`（含 `patterns` / `trackLayout`）：明确拒绝  
+- [ ] Web MIDI 可用时外接键盘可弹奏；不可用时鼠标/触摸正常  
+- [ ] 仅钢琴采样加载（无鼓或其他乐器资源请求）  
 
 ---
 
@@ -296,17 +313,18 @@ embedded/harmonyforge/
 
 ---
 
-## 13. 团队执行顺序（建议 Sprint）
+## 13. 团队执行顺序（本仓库 Sprint）
 
-1. **门闸**：`mode=piano` + 隐藏 legacy DOM + 不 init Sequencer/Arranger  
-2. **数据**：`piano-event-store` + `piano-project-io` + 拒绝 legacy 工程  
-3. **演奏**：`piano-controller` + INS-008 noteOn/off  
-4. **录制回放**：`piano-scheduler` + transport 状态机  
-5. **UI**：`piano-studio` 壳 + 复用 88 键  
-6. **宿主**：Card World `musicEmbedUrl` 固定 `mode=piano`；版本 0.14.0  
+1. **脚手架**：`index.html`、`css/piano-studio.css`、`VERSION`；静态服务可预览空壳  
+2. **音频 + 键盘**：`piano-engine.js`（钢琴采样）+ `piano-keyboard.js`（88 键 live 演奏）  
+3. **数据**：`piano-event-store` + `piano-project-io` + legacy `.hfproj` 拒绝逻辑  
+4. **控制**：`piano-controller`（键盘/MIDI 统一入口、transport 状态机）  
+5. **录制回放**：`piano-scheduler`（`onMs`/`offMs` 写入与 `AudioContext` 调度）  
+6. **UI 壳**：`piano-studio.js` — 工具栏（新建/打开/保存/录制/播放/时长显示）  
+7. **嵌入**（P0 之后）：产物合入 Card-World；`musicEmbedUrl` 指向 `embedded/piano-studio/`  
 
 ---
 
 ## 14. 一句话
 
-**P0 = 只有钢琴工作室：`piano-v1` 毫秒事件会话，与步进/鼓/ BPM 完全切割；用户能弹、能录、能存，其余能力一律不做。**
+**P0 = 只有钢琴工作室：`piano-v1` 毫秒事件会话，与步进/鼓/BPM 完全切割；在本仓库独立页面里能弹、能录、能存，其余能力一律不做。**
