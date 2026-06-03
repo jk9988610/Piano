@@ -1,0 +1,36 @@
+{
+  "schema": "piano-score-v1",
+  "title": "生日快乐",
+  "bpm": 100,
+  "velocity": 96,
+  "notes": [
+    { "midi": 67, "beat": 0, "durBeats": 1 },
+    { "midi": 67, "beat": 1, "durBeats": 1 },
+    { "midi": 69, "beat": 2, "durBeats": 1 },
+    { "midi": 67, "beat": 3, "durBeats": 1 },
+    { "midi": 72, "beat": 4, "durBeats": 1 },
+    { "midi": 71, "beat": 5, "durBeats": 2 },
+
+    { "midi": 67, "beat": 7, "durBeats": 1 },
+    { "midi": 67, "beat": 8, "durBeats": 1 },
+    { "midi": 69, "beat": 9, "durBeats": 1 },
+    { "midi": 67, "beat": 10, "durBeats": 1 },
+    { "midi": 74, "beat": 11, "durBeats": 1 },
+    { "midi": 72, "beat": 12, "durBeats": 2 },
+
+    { "midi": 67, "beat": 14, "durBeats": 1 },
+    { "midi": 67, "beat": 15, "durBeats": 1 },
+    { "midi": 79, "beat": 16, "durBeats": 1 },
+    { "midi": 76, "beat": 17, "durBeats": 1 },
+    { "midi": 72, "beat": 18, "durBeats": 1 },
+    { "midi": 71, "beat": 19, "durBeats": 1 },
+    { "midi": 69, "beat": 20, "durBeats": 2 },
+
+    { "midi": 77, "beat": 22, "durBeats": 1 },
+    { "midi": 77, "beat": 23, "durBeats": 1 },
+    { "midi": 76, "beat": 24, "durBeats": 1 },
+    { "midi": 72, "beat": 25, "durBeats": 1 },
+    { "midi": 74, "beat": 26, "durBeats": 1 },
+    { "midi": 72, "beat": 27, "durBeats": 3 }
+  ]
+}

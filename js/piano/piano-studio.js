@@ -29,7 +29,9 @@ const els = {
   btnStopPlay: document.getElementById("btnStopPlay"),
   btnPlayMode: document.getElementById("btnPlayMode"),
   btnOpenScore: document.getElementById("btnOpenScore"),
-  btnDemoScore: document.getElementById("btnDemoScore"),
+  btnDemoTwinkle: document.getElementById("btnDemoTwinkle"),
+  btnDemoBirthday: document.getElementById("btnDemoBirthday"),
+  btnDemoTwoTigers: document.getElementById("btnDemoTwoTigers"),
   btnFullscreen: document.getElementById("btnFullscreen"),
   btnKeyZoomOut: document.getElementById("btnKeyZoomOut"),
   btnKeyZoomIn: document.getElementById("btnKeyZoomIn"),
@@ -198,7 +200,9 @@ function refreshUI() {
   if (els.btnStopPlay) els.btnStopPlay.disabled = transport !== "playing";
   const idle = transport === "idle";
   if (els.btnOpenScore) els.btnOpenScore.disabled = !idle;
-  if (els.btnDemoScore) els.btnDemoScore.disabled = !idle;
+  if (els.btnDemoTwinkle) els.btnDemoTwinkle.disabled = !idle;
+  if (els.btnDemoBirthday) els.btnDemoBirthday.disabled = !idle;
+  if (els.btnDemoTwoTigers) els.btnDemoTwoTigers.disabled = !idle;
   if (els.btnPlayMode) els.btnPlayMode.disabled = !idle;
 
   els.btnRecord?.classList.toggle("active", transport === "recording");
@@ -226,6 +230,17 @@ function importScoreProject(project) {
   scoreLoadedHint = true;
   resetPracticeSession();
   refreshUI();
+}
+
+async function loadDemoScore(filename) {
+  try {
+    const url = new URL(`scores/${filename}`, window.location.href).href;
+    const res = await fetch(`${url}?v=${encodeURIComponent(APP_VERSION)}`, { cache: "no-store" });
+    if (!res.ok) throw new Error("fetch failed");
+    await loadScoreText(await res.text());
+  } catch {
+    alert(i18n.t("score.error.load_failed"));
+  }
 }
 
 async function loadScoreText(text) {
@@ -342,16 +357,9 @@ function bindUi() {
     }
   });
 
-  bindPress(els.btnDemoScore, async () => {
-    try {
-      const url = new URL("scores/twinkle.json", window.location.href).href;
-      const res = await fetch(`${url}?v=${encodeURIComponent(APP_VERSION)}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("fetch failed");
-      await loadScoreText(await res.text());
-    } catch {
-      alert(i18n.t("score.error.load_failed"));
-    }
-  });
+  bindPress(els.btnDemoTwinkle, () => loadDemoScore("twinkle.json"));
+  bindPress(els.btnDemoBirthday, () => loadDemoScore("happy-birthday.json"));
+  bindPress(els.btnDemoTwoTigers, () => loadDemoScore("two-tigers.json"));
 
   bindPress(els.btnRecord, async () => {
     await controller.ensureAudioReady();
