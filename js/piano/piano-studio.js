@@ -32,6 +32,7 @@ const els = {
   btnDemoTwinkle: document.getElementById("btnDemoTwinkle"),
   btnDemoBirthday: document.getElementById("btnDemoBirthday"),
   btnDemoTwoTigers: document.getElementById("btnDemoTwoTigers"),
+  btnDemoJasmine: document.getElementById("btnDemoJasmine"),
   btnFullscreen: document.getElementById("btnFullscreen"),
   btnKeyZoomOut: document.getElementById("btnKeyZoomOut"),
   btnKeyZoomIn: document.getElementById("btnKeyZoomIn"),
@@ -203,6 +204,7 @@ function refreshUI() {
   if (els.btnDemoTwinkle) els.btnDemoTwinkle.disabled = !idle;
   if (els.btnDemoBirthday) els.btnDemoBirthday.disabled = !idle;
   if (els.btnDemoTwoTigers) els.btnDemoTwoTigers.disabled = !idle;
+  if (els.btnDemoJasmine) els.btnDemoJasmine.disabled = !idle;
   if (els.btnPlayMode) els.btnPlayMode.disabled = !idle;
 
   els.btnRecord?.classList.toggle("active", transport === "recording");
@@ -360,6 +362,7 @@ function bindUi() {
   bindPress(els.btnDemoTwinkle, () => loadDemoScore("twinkle.json"));
   bindPress(els.btnDemoBirthday, () => loadDemoScore("happy-birthday.json"));
   bindPress(els.btnDemoTwoTigers, () => loadDemoScore("two-tigers.json"));
+  bindPress(els.btnDemoJasmine, () => loadDemoScore("jasmine.json"));
 
   bindPress(els.btnRecord, async () => {
     await controller.ensureAudioReady();
