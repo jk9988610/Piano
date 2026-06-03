@@ -1,5 +1,7 @@
 /** Recording clock + playback scheduler */
 
+import { FALL_LEAD_MS } from "./piano-falling-notes.js";
+
 export function createScheduler(engine, eventStore) {
   let transport = "idle";
   let recordStartPerf = 0;
@@ -70,13 +72,17 @@ export function createScheduler(engine, eventStore) {
       if (!practice) {
         const baseAudio = Tone.now() + 0.08;
         const now = performance.now();
+        const audioLeadSec = FALL_LEAD_MS / 1000;
 
         events.forEach((ev) => {
           const offMs = ev.offMs ?? ev.onMs + 80;
-          engine.noteOff(ev.midi, baseAudio + offMs / 1000);
+          engine.noteOff(ev.midi, baseAudio + audioLeadSec + offMs / 1000);
 
           visualTimers.push(
-            setTimeout(() => hooks.onNoteOff?.(ev.midi), Math.max(0, startAt + offMs - now))
+            setTimeout(
+              () => hooks.onNoteOff?.(ev.midi),
+              Math.max(0, startAt + FALL_LEAD_MS + offMs - now)
+            )
           );
         });
       }
@@ -89,7 +95,7 @@ export function createScheduler(engine, eventStore) {
         playbackHooks = null;
         onPlaybackEnd?.();
         onPlaybackEnd = null;
-      }, durationMs + 120);
+      }, durationMs + FALL_LEAD_MS + 120);
 
       return true;
     },

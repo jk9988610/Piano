@@ -7,8 +7,8 @@ import { isBlackKey, KEY_SIZE_PRESETS } from "../piano-keyboard.js";
 const MIN_KEY_W = KEY_SIZE_PRESETS[0].w;
 const BLOCK_SCALE = 1.35;
 const SCROLL_LERP = 0.055;
-/** 每块从顶缘到中心过线的固定下落时长（ms） */
-const FALL_LEAD_MS = 2400;
+/** 每块从顶缘到中心过线的固定下落时长（ms）；播放开始后先经历此预备段再进入曲谱时间 */
+export const FALL_LEAD_MS = 2400;
 
 export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   if (!keyboard?.scrollEl || !keyboard?.boardEl || !stageEl) return null;
@@ -95,8 +95,6 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
 
   function computeBlockMeta(ev, width) {
     const onMs = ev.onMs;
-    const virtualSpawnMs = onMs - FALL_LEAD_MS;
-    const spawnMs = Math.max(0, virtualSpawnMs);
 
     return {
       id: ev.id ?? `${ev.midi}-${onMs}`,
@@ -104,15 +102,15 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       velocity: ev.velocity ?? 96,
       onMs,
       offMs: ev.offMs ?? onMs + 80,
-      virtualSpawnMs,
-      spawnMs,
+      spawnMs: onMs,
+      hitMs: onMs + FALL_LEAD_MS,
       fallDuration: FALL_LEAD_MS,
       width,
     };
   }
 
   function blockProgress(block, elapsed) {
-    const t = elapsed - block.virtualSpawnMs;
+    const t = elapsed - block.spawnMs;
     if (t <= 0) return 0;
     if (t >= block.fallDuration) return 1;
     return t / block.fallDuration;
@@ -121,8 +119,8 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   function blockTopY(block, elapsed) {
     const targetAtLine = targetTopFor();
 
-    if (mode === "practice" && elapsed > block.onMs) {
-      const postMs = elapsed - block.onMs;
+    if (mode === "practice" && elapsed > block.hitMs) {
+      const postMs = elapsed - block.hitMs;
       return targetAtLine + postMs * fallSpeedPxPerMs();
     }
 
@@ -143,7 +141,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   function updateScrollFollow(elapsed) {
     if (mode === "practice") return;
 
-    const active = blocks.find((b) => !b.removed && !b.resolved && elapsed >= b.virtualSpawnMs);
+    const active = blocks.find((b) => !b.removed && !b.resolved && elapsed >= b.spawnMs);
     if (!active) return;
 
     if (followMidi !== active.midi) followMidi = active.midi;
@@ -240,7 +238,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       layoutBlock(block, elapsed);
       const { height } = currentBlockDims(block);
 
-      if (mode === "enjoy" && !block.centerHit && elapsed >= block.onMs) {
+      if (mode === "enjoy" && !block.centerHit && elapsed >= block.hitMs) {
         block.centerHit = true;
         onCenterHit?.(block.midi, block.velocity, block);
         resolveBlockEnjoy(block);
@@ -355,7 +353,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
           !b.judged &&
           !b.removed &&
           !b.resolved &&
-          elapsed >= b.virtualSpawnMs
+          elapsed >= b.spawnMs
       );
       if (!candidates.length) return null;
 
@@ -390,7 +388,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       applyModeClass();
 
       blocks = buildBlocks(events);
-      playbackEndMs = Math.max(...blocks.map((b) => b.offMs)) + 400;
+      playbackEndMs = Math.max(...blocks.map((b) => b.offMs)) + FALL_LEAD_MS + 400;
 
       for (const block of blocks) {
         block.onMiss = options.onBlockMiss ?? null;
