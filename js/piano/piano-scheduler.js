@@ -5,6 +5,7 @@ export function createScheduler(engine, eventStore) {
   let recordStartPerf = 0;
   let playbackEndTimer = null;
   let onPlaybackEnd = null;
+  let playbackHooks = null;
 
   function clearPlaybackTimers() {
     if (playbackEndTimer) {
@@ -41,20 +42,25 @@ export function createScheduler(engine, eventStore) {
       return transport === "recording" ? nowRecordingMs() : 0;
     },
 
-    async startPlayback(onEnd) {
+    async startPlayback(onEnd, hooks = {}) {
       if (transport !== "idle") return false;
       await engine.unlock();
       transport = "playing";
       onPlaybackEnd = onEnd;
+      playbackHooks = hooks;
       clearPlaybackTimers();
 
       const events = eventStore.getProject().session.events;
       const durationMs = eventStore.getDurationMs();
       if (!events.length) {
         transport = "idle";
+        playbackHooks = null;
         onEnd?.();
         return true;
       }
+
+      const startAt = performance.now() + 80;
+      hooks.onPlaybackStart?.(events, startAt);
 
       const baseAudio = Tone.now() + 0.08;
       events.forEach((ev) => {
@@ -67,6 +73,8 @@ export function createScheduler(engine, eventStore) {
         if (transport !== "playing") return;
         engine.stopAll();
         transport = "idle";
+        playbackHooks?.onPlaybackStop?.();
+        playbackHooks = null;
         onPlaybackEnd?.();
         onPlaybackEnd = null;
       }, durationMs + 120);
@@ -79,6 +87,8 @@ export function createScheduler(engine, eventStore) {
       clearPlaybackTimers();
       engine.stopAll();
       transport = "idle";
+      playbackHooks?.onPlaybackStop?.();
+      playbackHooks = null;
       onPlaybackEnd?.();
       onPlaybackEnd = null;
     },

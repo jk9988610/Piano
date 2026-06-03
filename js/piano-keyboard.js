@@ -331,6 +331,28 @@ export function renderKeyboard(container, opts = {}) {
     maxMidi,
     whiteCount: whiteMidis.length,
 
+    getKeyGeometry(midi) {
+      const k = layout.find((item) => item.midi === midi);
+      if (!k) return null;
+      return {
+        centerX: k.x + k.w / 2,
+        width: k.w,
+        isBlack: k.isBlack,
+      };
+    },
+
+    pressVisual(midi) {
+      view.press(midi);
+    },
+
+    releaseVisual(midi) {
+      view.release(midi);
+    },
+
+    releaseAllVisual() {
+      view.releaseAll();
+    },
+
     releaseAll() {
       interaction.releaseAllPointers();
       view.releaseAll();

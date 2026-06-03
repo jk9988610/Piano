@@ -256,6 +256,69 @@ body {
 }
 
 
+
+/* 落块播放道（卷轴下方 → 判定线 → 琴键） */
+.piano-play-lane {
+  position: relative;
+  flex-shrink: 0;
+  height: var(--note-lane-h, 100px);
+  overflow: hidden;
+  margin: 0 auto;
+}
+
+.piano-play-lane-inner {
+  position: relative;
+  height: 100%;
+}
+
+.piano-note-hit-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.25);
+  z-index: 4;
+  pointer-events: none;
+}
+
+.fall-note {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 4px;
+  z-index: 2;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.fall-note-white {
+  background: #f472b6;
+  box-shadow: 0 0 10px rgba(244, 114, 182, 0.55);
+}
+
+.fall-note-black {
+  background: #60a5fa;
+  box-shadow: 0 0 10px rgba(96, 165, 250, 0.55);
+}
+
+.fall-note-flash {
+  animation: fall-note-flash 0.14s ease-out forwards;
+}
+
+@keyframes fall-note-flash {
+  0% {
+    filter: brightness(2);
+    opacity: 1;
+  }
+  100% {
+    filter: brightness(2.5);
+    opacity: 0;
+    transform: translate(var(--fx, 0px), var(--fy, 0px)) scale(1.15);
+  }
+}
+
 .keyboard-area {
   flex: 1;
   display: flex;
@@ -273,6 +336,9 @@ body {
 }
 
 .piano-keyboard-scroll {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   overflow-x: auto;
   overflow-y: hidden;
   max-width: 100%;

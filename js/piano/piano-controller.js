@@ -102,10 +102,10 @@ export function createController({ engine, eventStore, scheduler, onChange }) {
       emit();
     },
 
-    startPlayback() {
+    startPlayback(hooks) {
       heldKeys.forEach((m) => engine.noteOff(m));
       heldKeys.clear();
-      return scheduler.startPlayback(() => emit());
+      return scheduler.startPlayback(() => emit(), hooks);
     },
 
     stopPlayback() {
