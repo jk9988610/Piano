@@ -1,9 +1,13 @@
 /**
  * 88 键钢琴键盘（MIDI 21–108）
- * 几何 hit-test + pointer 滑音；视觉状态由本模块独占管理
+ * 布局：白键等宽；黑键居中嵌于相邻两白键缝隙（真实钢琴比例）
  */
 const BLACK_SEMIS = new Set([1, 3, 6, 8, 10]);
 const DEFAULT_VEL = 121;
+
+/** 黑键宽约 58% 白键宽，高约 62% 白键高（常见声学钢琴比例） */
+const BLACK_W_RATIO = 0.58;
+const BLACK_H_RATIO = 0.62;
 
 export function isBlackKey(midi) {
   return BLACK_SEMIS.has(midi % 12);
@@ -17,7 +21,8 @@ function whiteMidisInRange(minMidi, maxMidi) {
   return keys;
 }
 
-function blackAnchorIndex(blackMidi, whiteMidis) {
+/** 黑键左侧那颗白键在 whiteMidis 中的下标 */
+function whiteIndexLeftOfBlack(blackMidi, whiteMidis) {
   let anchor = blackMidi - 1;
   while (anchor >= whiteMidis[0] && isBlackKey(anchor)) anchor -= 1;
   const idx = whiteMidis.indexOf(anchor);
@@ -26,17 +31,31 @@ function blackAnchorIndex(blackMidi, whiteMidis) {
 
 function readKeyMetrics(board) {
   const cs = getComputedStyle(board);
+  const whiteW = parseFloat(cs.getPropertyValue("--pk-white-w")) || 18;
+  const whiteH = parseFloat(cs.getPropertyValue("--pk-white-h")) || 120;
+  const blackW = parseFloat(cs.getPropertyValue("--pk-black-w")) || Math.round(whiteW * BLACK_W_RATIO);
+  const blackH = parseFloat(cs.getPropertyValue("--pk-black-h")) || Math.round(whiteH * BLACK_H_RATIO);
+  return { whiteW, whiteH, blackW, blackH };
+}
+
+/**
+ * 黑键 left： centered on the seam between white[idx] and white[idx+1]
+ * x = (idx + 1) * whiteW - blackW / 2
+ */
+function blackKeyRect(whiteIdxLeft, metrics) {
+  const { whiteW, whiteH, blackW, blackH } = metrics;
   return {
-    whiteW: parseFloat(cs.getPropertyValue("--pk-white-w")) || 18,
-    whiteH: parseFloat(cs.getPropertyValue("--pk-white-h")) || 120,
-    blackW: parseFloat(cs.getPropertyValue("--pk-black-w")) || 11,
-    blackH: parseFloat(cs.getPropertyValue("--pk-black-h")) || 72,
+    x: (whiteIdxLeft + 1) * whiteW - blackW / 2,
+    y: 0,
+    w: blackW,
+    h: blackH,
   };
 }
 
 /** @returns {{ midi: number, x: number, y: number, w: number, h: number, isBlack: boolean }[]} */
 function buildKeyLayout(board, minMidi, maxMidi) {
-  const { whiteW, whiteH, blackW, blackH } = readKeyMetrics(board);
+  const metrics = readKeyMetrics(board);
+  const { whiteW, whiteH } = metrics;
   const whiteMidis = whiteMidisInRange(minMidi, maxMidi);
   const layout = [];
 
@@ -46,12 +65,26 @@ function buildKeyLayout(board, minMidi, maxMidi) {
 
   for (let midi = minMidi; midi <= maxMidi; midi++) {
     if (!isBlackKey(midi)) continue;
-    const idx = blackAnchorIndex(midi, whiteMidis);
-    const x = (idx + 0.68) * whiteW - blackW / 2;
-    layout.push({ midi, x, y: 0, w: blackW, h: blackH, isBlack: true });
+    const idx = whiteIndexLeftOfBlack(midi, whiteMidis);
+    const rect = blackKeyRect(idx, metrics);
+    layout.push({ midi, ...rect, isBlack: true });
   }
 
   return layout;
+}
+
+function applyBlackKeyPositions(board, minMidi, maxMidi) {
+  const metrics = readKeyMetrics(board);
+  const whiteMidis = whiteMidisInRange(minMidi, maxMidi);
+
+  board.querySelectorAll(".piano-key-black").forEach((el) => {
+    const midi = Number(el.dataset.midi);
+    const idx = whiteIndexLeftOfBlack(midi, whiteMidis);
+    const { x, w, h } = blackKeyRect(idx, metrics);
+    el.style.left = `${x}px`;
+    el.style.width = `${w}px`;
+    el.style.height = `${h}px`;
+  });
 }
 
 function hitTest(layout, board, clientX, clientY) {
@@ -60,8 +93,8 @@ function hitTest(layout, board, clientX, clientY) {
   const y = clientY - rect.top;
   if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
 
-  const blacks = layout.filter((k) => k.isBlack);
-  for (const k of blacks) {
+  for (const k of layout) {
+    if (!k.isBlack) continue;
     if (x >= k.x && x < k.x + k.w && y >= k.y && y < k.y + k.h) return k.midi;
   }
   for (const k of layout) {
@@ -97,14 +130,10 @@ function createKeyboardView(board) {
       pressed.clear();
       syncDom();
     },
-    getPressed() {
-      return new Set(pressed);
-    },
   };
 }
 
-function bindPointerInteraction(board, layout, view, handlers) {
-  /** pointerId → midi */
+function bindPointerInteraction(board, getLayout, view, handlers) {
   const pointers = new Map();
 
   function setKey(pointerId, midi) {
@@ -138,7 +167,7 @@ function bindPointerInteraction(board, layout, view, handlers) {
       if (e.button !== 0 && e.pointerType === "mouse") return;
       e.preventDefault();
       board.setPointerCapture(e.pointerId);
-      const midi = hitTest(layout, board, e.clientX, e.clientY);
+      const midi = hitTest(getLayout(), board, e.clientX, e.clientY);
       setKey(e.pointerId, midi);
     },
     { passive: false }
@@ -149,7 +178,7 @@ function bindPointerInteraction(board, layout, view, handlers) {
     (e) => {
       if (!board.hasPointerCapture(e.pointerId)) return;
       e.preventDefault();
-      const midi = hitTest(layout, board, e.clientX, e.clientY);
+      const midi = hitTest(getLayout(), board, e.clientX, e.clientY);
       if (midi != null) setKey(e.pointerId, midi);
       else if (pointers.has(e.pointerId)) releasePointer(e.pointerId);
     },
@@ -178,10 +207,6 @@ function bindPointerInteraction(board, layout, view, handlers) {
   };
 }
 
-/**
- * @param {HTMLElement} container
- * @param {{ minMidi?: number, maxMidi?: number, onNoteDown?: (midi:number, vel:number)=>void, onNoteUp?: (midi:number)=>void, onFirstInteraction?: ()=>void, labelFor?: (m:number)=>string }} opts
- */
 export function renderKeyboard(container, opts = {}) {
   if (!container) return null;
   const {
@@ -230,11 +255,9 @@ export function renderKeyboard(container, opts = {}) {
 
   for (let midi = minMidi; midi <= maxMidi; midi++) {
     if (!isBlackKey(midi)) continue;
-    const idx = blackAnchorIndex(midi, whiteMidis);
     const key = document.createElement("div");
     key.className = "piano-key piano-key-black";
     key.dataset.midi = String(midi);
-    key.style.setProperty("--piano-black-at", String(idx + 0.68));
     key.title = labelFor(midi);
     key.setAttribute("role", "button");
     key.setAttribute("aria-label", labelFor(midi));
@@ -245,11 +268,12 @@ export function renderKeyboard(container, opts = {}) {
   scroll.appendChild(board);
   container.appendChild(scroll);
 
-  const view = createKeyboardView(board);
+  applyBlackKeyPositions(board, minMidi, maxMidi);
   let layout = buildKeyLayout(board, minMidi, maxMidi);
-  let interaction = null;
-  let touched = false;
+  const getLayout = () => layout;
 
+  const view = createKeyboardView(board);
+  let touched = false;
   const handlers = {
     onNoteDown: (midi, vel) => {
       if (!touched) {
@@ -261,22 +285,22 @@ export function renderKeyboard(container, opts = {}) {
     onNoteUp,
   };
 
-  interaction = bindPointerInteraction(board, layout, view, handlers);
+  const interaction = bindPointerInteraction(board, getLayout, view, handlers);
 
   const ro = new ResizeObserver(() => {
+    applyBlackKeyPositions(board, minMidi, maxMidi);
     layout = buildKeyLayout(board, minMidi, maxMidi);
   });
   ro.observe(board);
 
   return {
     releaseAll() {
-      interaction?.releaseAllPointers();
+      interaction.releaseAllPointers();
       view.releaseAll();
     },
   };
 }
 
-/** @deprecated 视觉状态由键盘内部管理，外部勿再调用 */
 export function highlightKeys() {
-  /* noop — 避免 refreshUI 覆盖按键高亮 */
+  /* noop */
 }
