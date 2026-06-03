@@ -1,21 +1,28 @@
 /**
- * 落块视觉：紧挨琴键上方，与键盘共用横向滚动
+ * 落块视觉：琴键正上方固定落块道（不随滚动裁切），播放时自动滚到音符
  */
 import { isBlackKey, KEY_SIZE_PRESETS } from "../piano-keyboard.js";
 
-const FALL_LEAD_MS = 2000;
-/** 落块道高度；判定线在底部，紧贴琴键顶缘 */
-const LANE_HEIGHT_PX = 64;
+const FALL_LEAD_MS = 2400;
+const LANE_HEIGHT_PX = 88;
 const MIN_KEY_W = KEY_SIZE_PRESETS[0].w;
+const BLOCK_SCALE = 1.2;
 
 export function createFallingNotesLane(keyboard) {
   if (!keyboard?.scrollEl || !keyboard?.boardEl) return null;
 
   const scroll = keyboard.scrollEl;
   const board = keyboard.boardEl;
+  const host = scroll.parentElement;
+  if (!host) return null;
 
-  const lane = document.createElement("div");
-  lane.className = "fall-notes-lane";
+  host.classList.add("piano-keyboard-host--with-fall");
+
+  const overlay = document.createElement("div");
+  overlay.className = "fall-notes-overlay";
+
+  const track = document.createElement("div");
+  track.className = "fall-notes-track";
 
   const inner = document.createElement("div");
   inner.className = "fall-notes-inner";
@@ -24,10 +31,9 @@ export function createFallingNotesLane(keyboard) {
   hitLine.className = "piano-note-hit-line";
   inner.appendChild(hitLine);
 
-  lane.appendChild(inner);
-  scroll.insertBefore(lane, board);
-
-  scroll.classList.add("piano-keyboard-scroll--with-lane");
+  track.appendChild(inner);
+  overlay.appendChild(track);
+  host.insertBefore(overlay, scroll);
 
   let rafId = 0;
   let playing = false;
@@ -36,16 +42,34 @@ export function createFallingNotesLane(keyboard) {
   const releaseTimers = [];
 
   function hitLineY() {
-    return LANE_HEIGHT_PX - 1;
+    return LANE_HEIGHT_PX - 2;
   }
 
-  function syncLaneWidth() {
+  function syncTrackAlign() {
+    const boardRect = board.getBoundingClientRect();
+    const overlayRect = overlay.getBoundingClientRect();
     const w = board.offsetWidth || 1;
-    lane.style.width = `${w}px`;
+    track.style.width = `${w}px`;
+    track.style.transform = `translateX(${boardRect.left - overlayRect.left}px)`;
+  }
+
+  function scrollKeyIntoView(midi) {
+    const geom = keyboard.getKeyGeometry?.(midi);
+    if (!geom) return;
+    const pad = 48;
+    const keyLeft = geom.centerX - geom.width / 2;
+    const keyRight = geom.centerX + geom.width / 2;
+    const viewLeft = scroll.scrollLeft;
+    const viewRight = scroll.scrollLeft + scroll.clientWidth;
+    if (keyLeft < viewLeft + pad) {
+      scroll.scrollLeft = Math.max(0, keyLeft - pad);
+    } else if (keyRight > viewRight - pad) {
+      scroll.scrollLeft = Math.min(scroll.scrollWidth - scroll.clientWidth, keyRight - scroll.clientWidth + pad);
+    }
   }
 
   function blockSize(keyWidth) {
-    return Math.max(MIN_KEY_W, keyWidth);
+    return Math.max(MIN_KEY_W, Math.round(keyWidth * BLOCK_SCALE));
   }
 
   function createBlockEl(isBlack) {
@@ -80,22 +104,28 @@ export function createFallingNotesLane(keyboard) {
       window.setTimeout(() => {
         block.el.remove();
         block.removed = true;
-      }, 160);
+      }, 180);
     }
+  }
+
+  function scrollToUpcoming(elapsed) {
+    const next = blocks.find((b) => !b.hit && !b.removed && elapsed >= b.spawnMs - 200);
+    if (next) scrollKeyIntoView(next.midi);
   }
 
   function tick() {
     if (!playing) return;
-    syncLaneWidth();
+    syncTrackAlign();
     const elapsed = Math.max(0, performance.now() - startAt);
+    scrollToUpcoming(elapsed);
 
     for (const block of blocks) {
       if (block.removed) continue;
       if (elapsed < block.spawnMs) {
-        block.el.style.visibility = "hidden";
+        block.el.style.opacity = "0";
         continue;
       }
-      block.el.style.visibility = "visible";
+      block.el.style.opacity = "1";
       layoutBlock(block, elapsed);
     }
 
@@ -123,9 +153,14 @@ export function createFallingNotesLane(keyboard) {
     }
   }
 
-  const ro = new ResizeObserver(syncLaneWidth);
+  const onScroll = () => syncTrackAlign();
+  scroll.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", syncTrackAlign);
+
+  const ro = new ResizeObserver(syncTrackAlign);
   ro.observe(board);
-  syncLaneWidth();
+  ro.observe(overlay);
+  syncTrackAlign();
 
   return {
     start(events, playbackStartAt) {
@@ -134,7 +169,9 @@ export function createFallingNotesLane(keyboard) {
 
       playing = true;
       startAt = playbackStartAt;
-      syncLaneWidth();
+      syncTrackAlign();
+
+      if (events[0]?.midi != null) scrollKeyIntoView(events[0].midi);
 
       blocks = events.map((ev) => ({
         midi: ev.midi,
@@ -154,14 +191,16 @@ export function createFallingNotesLane(keyboard) {
     },
 
     refresh() {
-      syncLaneWidth();
+      syncTrackAlign();
     },
 
     destroy() {
       clearAll();
+      scroll.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", syncTrackAlign);
       ro.disconnect();
-      lane.remove();
-      scroll.classList.remove("piano-keyboard-scroll--with-lane");
+      overlay.remove();
+      host.classList.remove("piano-keyboard-host--with-fall");
     },
   };
 }

@@ -257,26 +257,37 @@ body {
 
 
 
-/* 落块道：紧挨琴键上方，共用横向滚动 */
-.fall-notes-lane {
+/* 落块道：琴键正上方，固定高度 */
+.piano-keyboard-host--with-fall {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+}
+
+.fall-notes-overlay {
   position: relative;
   flex-shrink: 0;
-  height: var(--note-lane-h, 64px);
+  width: 100%;
+  height: var(--note-lane-h, 88px);
   overflow: hidden;
-  margin-bottom: 0;
-  background: linear-gradient(180deg, rgba(18, 18, 28, 0.95) 0%, rgba(12, 12, 18, 0.98) 100%);
+  background: linear-gradient(180deg, #1a1a28 0%, #101018 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 -1px 0 rgba(244, 114, 182, 0.25);
+}
+
+.fall-notes-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  will-change: transform;
 }
 
 .fall-notes-inner {
   position: relative;
   width: 100%;
   height: 100%;
-}
-
-.piano-keyboard-scroll--with-lane {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
 }
 
 .piano-note-hit-line {
@@ -302,13 +313,15 @@ body {
 }
 
 .fall-note-white {
-  background: #f472b6;
-  box-shadow: 0 0 10px rgba(244, 114, 182, 0.55);
+  background: #ff5cab;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 16px rgba(255, 92, 171, 0.85), 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .fall-note-black {
-  background: #60a5fa;
-  box-shadow: 0 0 10px rgba(96, 165, 250, 0.55);
+  background: #3b9bff;
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 0 16px rgba(59, 155, 255, 0.85), 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .fall-note-flash {
