@@ -1,0 +1,22 @@
+{
+  "schema": "piano-score-v1",
+  "title": "小星星",
+  "bpm": 120,
+  "velocity": 96,
+  "notes": [
+    { "midi": 60, "beat": 0, "durBeats": 1 },
+    { "midi": 60, "beat": 1, "durBeats": 1 },
+    { "midi": 67, "beat": 2, "durBeats": 1 },
+    { "midi": 67, "beat": 3, "durBeats": 1 },
+    { "midi": 69, "beat": 4, "durBeats": 1 },
+    { "midi": 69, "beat": 5, "durBeats": 1 },
+    { "midi": 67, "beat": 6, "durBeats": 2 },
+    { "midi": 65, "beat": 8, "durBeats": 1 },
+    { "midi": 65, "beat": 9, "durBeats": 1 },
+    { "midi": 64, "beat": 10, "durBeats": 1 },
+    { "midi": 64, "beat": 11, "durBeats": 1 },
+    { "midi": 62, "beat": 12, "durBeats": 1 },
+    { "midi": 62, "beat": 13, "durBeats": 1 },
+    { "midi": 60, "beat": 14, "durBeats": 2 }
+  ]
+}

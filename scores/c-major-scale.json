@@ -1,0 +1,16 @@
+{
+  "schema": "piano-score-v1",
+  "title": "C 大调音阶",
+  "bpm": 100,
+  "velocity": 88,
+  "notes": [
+    { "midi": 60, "beat": 0, "durBeats": 1 },
+    { "midi": 62, "beat": 1, "durBeats": 1 },
+    { "midi": 64, "beat": 2, "durBeats": 1 },
+    { "midi": 65, "beat": 3, "durBeats": 1 },
+    { "midi": 67, "beat": 4, "durBeats": 1 },
+    { "midi": 69, "beat": 5, "durBeats": 1 },
+    { "midi": 71, "beat": 6, "durBeats": 1 },
+    { "midi": 72, "beat": 7, "durBeats": 2 }
+  ]
+}

@@ -38,7 +38,7 @@ jobs:
         run: |
           mkdir -p _site
           cp index.html version.json VERSION sw.js .nojekyll _site/
-          cp -r css js samples _site/
+          cp -r css js samples scores _site/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
