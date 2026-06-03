@@ -2,12 +2,11 @@
  * 落块视觉：恒定下落速度，方块中心过判定线时击键（欣赏模式）
  * 练习模式：手动卷轴、动态键宽、判定后消失 / 未判定则落至琴键后
  */
-import { isBlackKey, KEY_SIZE_PRESETS, DEFAULT_KEY_SIZE_INDEX } from "../piano-keyboard.js";
+import { isBlackKey, KEY_SIZE_PRESETS } from "../piano-keyboard.js";
 
 const MIN_KEY_W = KEY_SIZE_PRESETS[0].w;
 const BLOCK_SCALE = 1.35;
 const SCROLL_LERP = 0.055;
-const DEFAULT_BLOCK_GAP = Math.round(KEY_SIZE_PRESETS[DEFAULT_KEY_SIZE_INDEX].w * BLOCK_SCALE);
 /** 每块从顶缘到中心过线的固定下落时长（ms） */
 const FALL_LEAD_MS = 2400;
 
@@ -45,18 +44,21 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   let lineY = 0;
   let playbackEndMs = 0;
 
-  function blockSize(keyWidth) {
+  /** 高度固定为最小键宽时的正方形高度；宽度随琴键缩放 */
+  const BLOCK_HEIGHT = Math.max(MIN_KEY_W, Math.round(MIN_KEY_W * BLOCK_SCALE));
+
+  function blockWidth(keyWidth) {
     return Math.max(MIN_KEY_W, Math.round(keyWidth * BLOCK_SCALE));
   }
 
-  function currentBlockSize(block) {
+  function currentBlockDims(block) {
     const geom = keyboard.getKeyGeometry?.(block.midi);
-    return geom ? blockSize(geom.width) : block.size;
+    const width = geom ? blockWidth(geom.width) : block.width ?? blockWidth(MIN_KEY_W);
+    return { width, height: BLOCK_HEIGHT };
   }
 
   function gapAboveKeys() {
-    const geom = keyboard.getKeyGeometry?.(60) || keyboard.getKeyGeometry?.(21);
-    return geom ? blockSize(geom.width) : DEFAULT_BLOCK_GAP;
+    return BLOCK_HEIGHT;
   }
 
   function syncTrackAlign() {
@@ -76,22 +78,22 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     return lineY;
   }
 
-  function targetTopFor(size) {
-    return Math.max(8, lineY - size / 2);
+  function targetTopFor() {
+    return Math.max(8, lineY - BLOCK_HEIGHT / 2);
   }
 
-  function fallSpeedPxPerMs(size) {
-    return targetTopFor(size) / FALL_LEAD_MS;
+  function fallSpeedPxPerMs() {
+    return targetTopFor() / FALL_LEAD_MS;
   }
 
   /** 未判定方块完全落入琴键后的移除阈值（stage 坐标） */
-  function hideThresholdY(size) {
+  function hideThresholdY() {
     const stageH = Math.max(stageEl.clientHeight || 0, 80);
     const keyH = board.offsetHeight || 86;
-    return stageH + keyH - size;
+    return stageH + keyH - BLOCK_HEIGHT;
   }
 
-  function computeBlockMeta(ev, size) {
+  function computeBlockMeta(ev, width) {
     const onMs = ev.onMs;
     const virtualSpawnMs = onMs - FALL_LEAD_MS;
     const spawnMs = Math.max(0, virtualSpawnMs);
@@ -105,7 +107,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       virtualSpawnMs,
       spawnMs,
       fallDuration: FALL_LEAD_MS,
-      size,
+      width,
     };
   }
 
@@ -117,20 +119,18 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   }
 
   function blockTopY(block, elapsed) {
-    const size = currentBlockSize(block);
-    const targetAtLine = targetTopFor(size);
+    const targetAtLine = targetTopFor();
 
     if (mode === "practice" && elapsed > block.onMs) {
       const postMs = elapsed - block.onMs;
-      return targetAtLine + postMs * fallSpeedPxPerMs(size);
+      return targetAtLine + postMs * fallSpeedPxPerMs();
     }
 
     return blockProgress(block, elapsed) * targetAtLine;
   }
 
   function blockCenterY(block, elapsed) {
-    const size = currentBlockSize(block);
-    return blockTopY(block, elapsed) + size / 2;
+    return blockTopY(block, elapsed) + BLOCK_HEIGHT / 2;
   }
 
   function targetScrollForMidi(midi) {
@@ -166,10 +166,10 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   }
 
   function flashBlock(block) {
-    const size = currentBlockSize(block);
+    const { width } = currentBlockDims(block);
     const geom = keyboard.getKeyGeometry?.(block.midi);
     if (geom) {
-      const x = geom.centerX - size / 2;
+      const x = geom.centerX - width / 2;
       block.el.style.setProperty("--fx", `${x}px`);
       block.el.style.setProperty("--fy", `${lineY}px`);
     }
@@ -199,15 +199,15 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     const geom = keyboard.getKeyGeometry?.(block.midi);
     if (!geom) return;
 
-    const size = currentBlockSize(block);
+    const { width, height } = currentBlockDims(block);
     const topY = blockTopY(block, elapsed);
-    const x = geom.centerX - size / 2;
+    const x = geom.centerX - width / 2;
 
-    block.el.style.width = `${size}px`;
-    block.el.style.height = `${size}px`;
+    block.el.style.width = `${width}px`;
+    block.el.style.height = `${height}px`;
     block.el.style.transform = `translate3d(${x}px, ${topY}px, 0)`;
 
-    if (mode === "practice" && topY > lineY - size / 2) {
+    if (mode === "practice" && topY > lineY - height / 2) {
       block.el.classList.add("fall-note--fallthrough");
       block.el.style.zIndex = "1";
     } else {
@@ -216,7 +216,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     }
 
     block.topY = topY;
-    block.size = size;
+    block.width = width;
   }
 
   function tick() {
@@ -238,7 +238,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       if (block.resolved) continue;
 
       layoutBlock(block, elapsed);
-      const size = currentBlockSize(block);
+      const { height } = currentBlockDims(block);
 
       if (mode === "enjoy" && !block.centerHit && elapsed >= block.onMs) {
         block.centerHit = true;
@@ -248,13 +248,13 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       }
 
       if (mode === "practice") {
-        if (!block.judged && block.topY > lineY + size / 2) {
+        if (!block.judged && block.topY > lineY + height / 2) {
           block.judged = true;
           block.missed = true;
           block.onMiss?.(block);
         }
 
-        if (block.topY > hideThresholdY(size)) {
+        if (block.topY > hideThresholdY()) {
           removeBlockImmediate(block);
         }
       }
@@ -300,8 +300,8 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     syncLayout();
     return events.map((ev, i) => {
       const geom = keyboard.getKeyGeometry?.(ev.midi);
-      const size = geom ? blockSize(geom.width) : blockSize(DEFAULT_BLOCK_GAP);
-      const meta = computeBlockMeta({ ...ev, id: ev.id ?? `n${i}` }, size);
+      const width = geom ? blockWidth(geom.width) : blockWidth(MIN_KEY_W);
+      const meta = computeBlockMeta({ ...ev, id: ev.id ?? `n${i}` }, width);
       return {
         ...meta,
         el: createBlockEl(isBlackKey(ev.midi)),
@@ -368,8 +368,8 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
           bestDist = d;
         }
       }
-      const size = currentBlockSize(best);
-      return { block: best, topY: blockTopY(best, elapsed), lineY, size, elapsed };
+      const { width, height } = currentBlockDims(best);
+      return { block: best, topY: blockTopY(best, elapsed), lineY, width, height, size: height, elapsed };
     },
 
     markJudged(block) {
