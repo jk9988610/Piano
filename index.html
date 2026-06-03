@@ -3,20 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="piano-app-version" content="0.1.0" />
+    <meta name="piano-app-version" content="0.1.2" />
     <title>钢琴工作室 · Piano Studio</title>
-    <link rel="stylesheet" href="css/piano-studio.css?v=0.1.0" />
+    <link rel="stylesheet" href="css/piano-studio.css?v=0.1.2" />
   </head>
   <body>
     <div id="app" class="app-shell">
       <header class="app-header">
         <h1 class="app-title" data-i18n="app.title">钢琴工作室</h1>
+        <span id="versionBadge" class="version-badge">v0.1.2</span>
         <div class="file-actions">
           <button type="button" id="btnNew" class="btn btn-ghost" data-i18n="file.new">新建</button>
           <button type="button" id="btnOpen" class="btn btn-ghost" data-i18n="file.open">打开</button>
           <button type="button" id="btnSave" class="btn btn-ghost" data-i18n="file.save">保存</button>
         </div>
-        <span id="statusText" class="status-text" data-i18n="status.ready">就绪</span>
+        <div class="header-actions">
+          <button type="button" id="btnFullscreen" class="btn btn-icon" title="全屏" aria-label="全屏" data-i18n-title="fullscreen.enter">⛶</button>
+          <span id="statusText" class="status-text" data-i18n="status.ready">就绪</span>
+        </div>
       </header>
 
       <section class="transport-bar">
@@ -30,16 +34,11 @@
       <main class="keyboard-area">
         <div id="keyboardHost"></div>
       </main>
-
-      <footer class="app-footer">
-        <p data-i18n="hint.play">按住琴键发声；录制后播放将还原时值。</p>
-        <p id="loadHint" class="load-hint" hidden data-i18n="hint.loading">正在加载 Salamander 钢琴采样（INS-008）…</p>
-      </footer>
     </div>
 
     <input type="file" id="fileInput" accept=".hfproj,application/json" hidden />
 
-    <script src="js/tone.min.js?v=0.1.0"></script>
-    <script type="module" src="js/piano/piano-studio.js?v=0.1.0"></script>
+    <script src="js/tone.min.js?v=0.1.2"></script>
+    <script type="module" src="js/piano/piano-studio.js?v=0.1.2"></script>
   </body>
 </html>

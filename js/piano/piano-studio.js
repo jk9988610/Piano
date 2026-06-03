@@ -11,7 +11,7 @@ const APP_VERSION = document.querySelector('meta[name="piano-app-version"]')?.co
 const els = {
   status: document.getElementById("statusText"),
   time: document.getElementById("timeDisplay"),
-  loadHint: document.getElementById("loadHint"),
+  version: document.getElementById("versionBadge"),
   keyboardHost: document.getElementById("keyboardHost"),
   fileInput: document.getElementById("fileInput"),
   btnNew: document.getElementById("btnNew"),
@@ -21,6 +21,7 @@ const els = {
   btnStopRec: document.getElementById("btnStopRec"),
   btnPlay: document.getElementById("btnPlay"),
   btnStopPlay: document.getElementById("btnStopPlay"),
+  btnFullscreen: document.getElementById("btnFullscreen"),
 };
 
 const i18n = createI18n(resolveLang());
@@ -31,14 +32,60 @@ const eventStore = createEventStore(createEmptyProject("新演奏", APP_VERSION)
 const scheduler = createScheduler(engine, eventStore);
 const controller = createController({ engine, eventStore, scheduler, onChange: refreshUI });
 
+function formatVersionLabel(manifest) {
+  const ver = manifest?.version || APP_VERSION;
+  const build = manifest?.build;
+  if (build && build !== "dev") return `v${ver} · ${build}`;
+  return `v${ver}`;
+}
+
+async function loadVersionBadge() {
+  if (!els.version) return;
+  els.version.textContent = `v${APP_VERSION}`;
+  try {
+    const res = await fetch(`version.json?v=${encodeURIComponent(APP_VERSION)}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const manifest = await res.json();
+    els.version.textContent = formatVersionLabel(manifest);
+    if (manifest.version) {
+      document.querySelector('meta[name="piano-app-version"]')?.setAttribute("content", manifest.version);
+    }
+  } catch {
+    /* offline / file:// — keep meta version */
+  }
+}
+
+function initFullscreen() {
+  if (!els.btnFullscreen) return;
+  const root = document.documentElement;
+
+  const syncLabel = () => {
+    const on = !!document.fullscreenElement;
+    els.btnFullscreen.textContent = on ? "⤡" : "⛶";
+    const key = on ? "fullscreen.exit" : "fullscreen.enter";
+    const label = i18n.t(key);
+    els.btnFullscreen.title = label;
+    els.btnFullscreen.setAttribute("aria-label", label);
+  };
+
+  els.btnFullscreen.addEventListener("click", async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await root.requestFullscreen();
+    } catch (err) {
+      console.warn("Fullscreen unavailable", err);
+    }
+  });
+
+  document.addEventListener("fullscreenchange", syncLabel);
+  syncLabel();
+}
+
 function refreshUI() {
   const transport = scheduler.getTransport();
   const dur = eventStore.getDurationMs();
   let pos = 0;
   if (transport === "recording") pos = scheduler.recordingNowMs();
-  else if (transport === "playing") {
-    /* position tracked visually via duration only in P0 */
-  }
   els.time.textContent = `${formatTimeMs(pos)} / ${formatTimeMs(dur)}`;
 
   els.btnRecord.disabled = transport !== "idle";
@@ -121,17 +168,17 @@ document.body.addEventListener(
   { once: false }
 );
 
-els.loadHint.hidden = false;
+loadVersionBadge();
+initFullscreen();
+
 engine
-  .ensureLoaded((state) => {
-    if (state === "ready") els.loadHint.hidden = true;
-  })
+  .ensureLoaded()
   .then(() => {
     controller.initMidi();
     refreshUI();
   })
   .catch((err) => {
-    els.loadHint.textContent = String(err.message || err);
+    els.status.textContent = String(err.message || err);
     console.error(err);
   });
 

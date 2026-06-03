@@ -1,8 +1,9 @@
 /**
  * 88 键钢琴键盘 UI（MIDI 21–108，A0–C8）
- * Live play: pointer down/up → onNoteDown / onNoteUp
+ * 支持 pointer 滑音：按住并滑过琴键连续发声
  */
 const BLACK_SEMIS = new Set([1, 3, 6, 8, 10]);
+const DEFAULT_VEL = 121;
 
 export function isBlackKey(midi) {
   return BLACK_SEMIS.has(midi % 12);
@@ -23,32 +24,85 @@ function blackAnchorIndex(blackMidi, whiteMidis) {
   return idx >= 0 ? idx : 0;
 }
 
-function setPressed(container, midi, pressed) {
-  const el = container.querySelector(`[data-midi="${midi}"]`);
+function midiFromElement(el) {
+  if (!el?.classList?.contains("piano-key")) return null;
+  const midi = Number(el.dataset.midi);
+  return Number.isFinite(midi) ? midi : null;
+}
+
+function midiAtPoint(board, clientX, clientY) {
+  board.style.pointerEvents = "none";
+  const hit = document.elementFromPoint(clientX, clientY);
+  board.style.pointerEvents = "";
+  if (!hit) return null;
+  const key = hit.closest?.(".piano-key");
+  if (!key || !board.contains(key)) return null;
+  return midiFromElement(key);
+}
+
+function setPressed(board, midi, pressed) {
+  if (midi == null) return;
+  const el = board.querySelector(`[data-midi="${midi}"]`);
   if (el) el.classList.toggle("pressed", pressed);
 }
 
-function bindLiveKey(btn, midi, handlers) {
-  const down = (e) => {
-    e.preventDefault();
-    if (btn.dataset.held === "1") return;
-    btn.dataset.held = "1";
-    setPressed(btn.closest(".piano-keyboard-host"), midi, true);
-    handlers.onNoteDown?.(midi, 121);
-  };
-  const up = (e) => {
-    e.preventDefault();
-    if (btn.dataset.held !== "1") return;
-    btn.dataset.held = "0";
-    setPressed(btn.closest(".piano-keyboard-host"), midi, false);
+function bindGlideKeyboard(board, handlers) {
+  /** @type {Map<number, number>} pointerId → active midi */
+  const active = new Map();
+
+  function press(pointerId, midi) {
+    const prev = active.get(pointerId);
+    if (prev === midi) return;
+    if (prev != null) {
+      setPressed(board, prev, false);
+      handlers.onNoteUp?.(prev);
+    }
+    if (midi != null) {
+      active.set(pointerId, midi);
+      setPressed(board, midi, true);
+      handlers.onNoteDown?.(midi, DEFAULT_VEL);
+    } else {
+      active.delete(pointerId);
+    }
+  }
+
+  function releasePointer(pointerId) {
+    const midi = active.get(pointerId);
+    if (midi == null) return;
+    active.delete(pointerId);
+    setPressed(board, midi, false);
     handlers.onNoteUp?.(midi);
-  };
-  btn.addEventListener("pointerdown", down);
-  btn.addEventListener("pointerup", up);
-  btn.addEventListener("pointercancel", up);
-  btn.addEventListener("pointerleave", (e) => {
-    if (btn.dataset.held === "1" && e.buttons === 0) up(e);
+  }
+
+  board.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    e.preventDefault();
+    board.setPointerCapture(e.pointerId);
+    const midi = midiAtPoint(board, e.clientX, e.clientY);
+    if (midi != null) press(e.pointerId, midi);
   });
+
+  board.addEventListener("pointermove", (e) => {
+    if (!board.hasPointerCapture(e.pointerId)) return;
+    e.preventDefault();
+    const midi = midiAtPoint(board, e.clientX, e.clientY);
+    if (midi != null) press(e.pointerId, midi);
+  });
+
+  const end = (e) => {
+    if (board.hasPointerCapture(e.pointerId)) {
+      try {
+        board.releasePointerCapture(e.pointerId);
+      } catch {
+        /* already released */
+      }
+    }
+    releasePointer(e.pointerId);
+  };
+
+  board.addEventListener("pointerup", end);
+  board.addEventListener("pointercancel", end);
+  board.addEventListener("lostpointercapture", (e) => releasePointer(e.pointerId));
 }
 
 /**
@@ -73,7 +127,7 @@ export function renderKeyboard(container, opts = {}) {
 
   const board = document.createElement("div");
   board.className = "piano-keyboard";
-  board.setAttribute("role", "listbox");
+  board.setAttribute("role", "application");
   board.setAttribute("aria-label", "钢琴键盘");
 
   const whiteMidis = whiteMidisInRange(minMidi, maxMidi);
@@ -96,7 +150,6 @@ export function renderKeyboard(container, opts = {}) {
       oct.textContent = String(Math.floor(midi / 12) - 1);
       btn.appendChild(oct);
     }
-    bindLiveKey(btn, midi, handlers);
     whitesRow.appendChild(btn);
   });
   board.appendChild(whitesRow);
@@ -111,9 +164,10 @@ export function renderKeyboard(container, opts = {}) {
     btn.style.setProperty("--piano-black-at", String(idx + 0.68));
     btn.title = labelFor(midi);
     btn.setAttribute("aria-label", labelFor(midi));
-    bindLiveKey(btn, midi, handlers);
     board.appendChild(btn);
   }
+
+  bindGlideKeyboard(board, handlers);
 
   scroll.appendChild(board);
   container.appendChild(scroll);
@@ -121,8 +175,10 @@ export function renderKeyboard(container, opts = {}) {
 
 export function highlightKeys(container, activeMidis) {
   if (!container) return;
+  const board = container.querySelector(".piano-keyboard");
+  if (!board) return;
   const set = activeMidis instanceof Set ? activeMidis : new Set(activeMidis);
-  container.querySelectorAll(".piano-key").forEach((el) => {
+  board.querySelectorAll(".piano-key").forEach((el) => {
     const m = Number(el.dataset.midi);
     el.classList.toggle("pressed", set.has(m));
   });
