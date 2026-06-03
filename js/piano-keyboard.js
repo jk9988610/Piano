@@ -34,7 +34,7 @@ function bindLiveKey(btn, midi, handlers) {
     if (btn.dataset.held === "1") return;
     btn.dataset.held = "1";
     setPressed(btn.closest(".piano-keyboard-host"), midi, true);
-    handlers.onNoteDown?.(midi, 96);
+    handlers.onNoteDown?.(midi, 121);
   };
   const up = (e) => {
     e.preventDefault();
