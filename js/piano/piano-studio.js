@@ -40,7 +40,8 @@ const els = {
 const i18n = createI18n(resolveLang());
 i18n.apply();
 
-installAppGuards(document.getElementById("app"));
+installAppGuards(document.querySelector(".keyboard-area"));
+installAppGuards(document.querySelector(".fall-notes-stage"));
 registerServiceWorker(APP_VERSION);
 
 const engine = createEngine();
@@ -52,6 +53,7 @@ const controller = createController({ engine, eventStore, scheduler, onChange: r
 let scoreLoadedHint = false;
 let keyboardNav = null;
 let fallingNotes = null;
+let keyboard = null;
 
 function formatVersionLabel(manifest) {
   const ver = manifest?.version || APP_VERSION;
@@ -89,7 +91,7 @@ function initFullscreen() {
     els.btnFullscreen.setAttribute("aria-label", label);
   };
 
-  els.btnFullscreen.addEventListener("click", async () => {
+  const toggleFullscreen = async () => {
     try {
       if (document.fullscreenElement) {
         await document.exitFullscreen();
@@ -104,8 +106,9 @@ function initFullscreen() {
       console.warn("Fullscreen unavailable", err);
       els.status.textContent = i18n.t("fullscreen.unavailable");
     }
-  });
+  };
 
+  bindPress(els.btnFullscreen, toggleFullscreen);
   document.addEventListener("fullscreenchange", syncLabel);
   syncLabel();
 }
@@ -115,18 +118,19 @@ function refreshUI() {
   const dur = eventStore.getDurationMs();
   let pos = 0;
   if (transport === "recording") pos = scheduler.recordingNowMs();
-  els.time.textContent = `${formatTimeMs(pos)} / ${formatTimeMs(dur)}`;
+  if (els.time) els.time.textContent = `${formatTimeMs(pos)} / ${formatTimeMs(dur)}`;
 
-  els.btnRecord.disabled = transport !== "idle";
-  els.btnStopRec.disabled = transport !== "recording";
-  els.btnPlay.disabled = transport !== "idle" || dur === 0;
-  els.btnStopPlay.disabled = transport !== "playing";
+  if (els.btnRecord) els.btnRecord.disabled = transport !== "idle";
+  if (els.btnStopRec) els.btnStopRec.disabled = transport !== "recording";
+  if (els.btnPlay) els.btnPlay.disabled = transport !== "idle" || dur === 0;
+  if (els.btnStopPlay) els.btnStopPlay.disabled = transport !== "playing";
   const idle = transport === "idle";
-  els.btnOpenScore.disabled = !idle;
-  els.btnDemoScore.disabled = !idle;
+  if (els.btnOpenScore) els.btnOpenScore.disabled = !idle;
+  if (els.btnDemoScore) els.btnDemoScore.disabled = !idle;
 
-  els.btnRecord.classList.toggle("active", transport === "recording");
+  els.btnRecord?.classList.toggle("active", transport === "recording");
 
+  if (!els.status) return;
   if (transport === "recording") els.status.textContent = i18n.t("status.recording");
   else if (transport === "playing") els.status.textContent = i18n.t("status.playing");
   else if (scoreLoadedHint) els.status.textContent = i18n.t("status.scoreLoaded");
@@ -136,17 +140,6 @@ function refreshUI() {
 function noteLabel(midi) {
   return Tone.Frequency(midi, "midi").toNote();
 }
-
-const keyboard = renderKeyboard(els.keyboardHost, {
-  onNoteDown: (midi, vel) => controller.handleNote(midi, vel, true),
-  onNoteUp: (midi) => controller.handleNote(midi, 64, false),
-  onFirstInteraction: () => controller.ensureAudioReady().catch(() => {}),
-  onLayoutChange: () => {
-    keyboardNav?.refresh();
-    fallingNotes?.refresh();
-  },
-  labelFor: noteLabel,
-});
 
 function importScoreProject(project) {
   fallingNotes?.stop();
@@ -166,41 +159,26 @@ async function loadScoreText(text) {
   importScoreProject(result.project);
 }
 
-try {
-  if (keyboard && els.fallNotesStage) {
-    fallingNotes = createFallingNotesLane(keyboard, els.fallNotesStage);
-  }
-} catch (err) {
-  console.error("Falling notes init failed", err);
+/** click + pointerup so taps work on mobile even when click synthesis is flaky */
+function bindPress(el, handler) {
+  if (!el) return;
+  let lastFire = 0;
+  const fire = (e) => {
+    if (el.disabled) return;
+    if (e.type === "pointerup" && e.pointerType === "mouse" && e.button !== 0) return;
+    const now = performance.now();
+    if (now - lastFire < 400) return;
+    lastFire = now;
+    handler(e);
+  };
+  el.addEventListener("click", fire);
+  el.addEventListener("pointerup", fire);
 }
 
-const playbackVisualHooks = {
-  onPlaybackStart: (events, startAt) => fallingNotes?.start(events, startAt),
-  onPlaybackStop: () => {
-    fallingNotes?.stop();
-    keyboard?.releaseAllVisual();
-  },
-  onNoteOn: (midi) => keyboard?.pressVisual(midi),
-  onNoteOff: (midi) => keyboard?.releaseVisual(midi),
-};
-
-try {
-  if (keyboard && els.keyboardNavTrack) {
-    keyboardNav = createKeyboardNav({
-      trackEl: els.keyboardNavTrack,
-      viewportEl: els.keyboardNavViewport,
-      miniEl: els.keyboardMiniMap,
-      btnZoomOut: els.btnKeyZoomOut,
-      btnZoomIn: els.btnKeyZoomIn,
-      keyboard,
-    });
-  }
-} catch (err) {
-  console.error("Keyboard nav init failed", err);
-}
+let playbackVisualHooks = null;
 
 function bindUi() {
-  els.btnNew?.addEventListener("click", () => {
+  bindPress(els.btnNew, () => {
     if (!confirm(i18n.t("confirm.new"))) return;
     fallingNotes?.stop();
     scheduler.stopPlayback();
@@ -210,7 +188,7 @@ function bindUi() {
     refreshUI();
   });
 
-  els.btnOpen?.addEventListener("click", () => els.fileInput?.click());
+  bindPress(els.btnOpen, () => els.fileInput?.click());
 
   els.fileInput?.addEventListener("change", async () => {
     const file = els.fileInput.files?.[0];
@@ -234,11 +212,11 @@ function bindUi() {
     }
   });
 
-  els.btnSave?.addEventListener("click", () => {
+  bindPress(els.btnSave, () => {
     downloadProject(eventStore.getProject());
   });
 
-  els.btnOpenScore?.addEventListener("click", () => els.scoreFileInput?.click());
+  bindPress(els.btnOpenScore, () => els.scoreFileInput?.click());
 
   els.scoreFileInput?.addEventListener("change", async () => {
     const file = els.scoreFileInput.files?.[0];
@@ -251,7 +229,7 @@ function bindUi() {
     }
   });
 
-  els.btnDemoScore?.addEventListener("click", async () => {
+  bindPress(els.btnDemoScore, async () => {
     try {
       const url = new URL("scores/twinkle.json", window.location.href).href;
       const res = await fetch(`${url}?v=${encodeURIComponent(APP_VERSION)}`, { cache: "no-store" });
@@ -262,19 +240,19 @@ function bindUi() {
     }
   });
 
-  els.btnRecord?.addEventListener("click", async () => {
+  bindPress(els.btnRecord, async () => {
     await controller.ensureAudioReady();
     eventStore.reset(eventStore.getTitle());
     scoreLoadedHint = false;
     controller.startRecording();
   });
 
-  els.btnStopRec?.addEventListener("click", () => {
+  bindPress(els.btnStopRec, () => {
     keyboard?.releaseAll();
     controller.stopRecording();
   });
 
-  els.btnPlay?.addEventListener("click", async () => {
+  bindPress(els.btnPlay, async () => {
     fallingNotes?.stop();
     keyboard?.releaseAll();
     await controller.ensureAudioReady();
@@ -283,12 +261,56 @@ function bindUi() {
     refreshUI();
   });
 
-  els.btnStopPlay?.addEventListener("click", () => controller.stopPlayback());
+  bindPress(els.btnStopPlay, () => controller.stopPlayback());
 
   initFullscreen();
 }
 
 bindUi();
+
+keyboard = renderKeyboard(els.keyboardHost, {
+  onNoteDown: (midi, vel) => controller.handleNote(midi, vel, true),
+  onNoteUp: (midi) => controller.handleNote(midi, 64, false),
+  onFirstInteraction: () => controller.ensureAudioReady().catch(() => {}),
+  onLayoutChange: () => {
+    keyboardNav?.refresh();
+    fallingNotes?.refresh();
+  },
+  labelFor: noteLabel,
+});
+
+playbackVisualHooks = {
+  onPlaybackStart: (events, startAt) => fallingNotes?.start(events, startAt),
+  onPlaybackStop: () => {
+    fallingNotes?.stop();
+    keyboard?.releaseAllVisual();
+  },
+  onNoteOn: (midi) => keyboard?.pressVisual(midi),
+  onNoteOff: (midi) => keyboard?.releaseVisual(midi),
+};
+
+try {
+  if (keyboard && els.fallNotesStage) {
+    fallingNotes = createFallingNotesLane(keyboard, els.fallNotesStage);
+  }
+} catch (err) {
+  console.error("Falling notes init failed", err);
+}
+
+try {
+  if (keyboard && els.keyboardNavTrack) {
+    keyboardNav = createKeyboardNav({
+      trackEl: els.keyboardNavTrack,
+      viewportEl: els.keyboardNavViewport,
+      miniEl: els.keyboardMiniMap,
+      btnZoomOut: els.btnKeyZoomOut,
+      btnZoomIn: els.btnKeyZoomIn,
+      keyboard,
+    });
+  }
+} catch (err) {
+  console.error("Keyboard nav init failed", err);
+}
 
 loadVersionBadge();
 
@@ -299,7 +321,7 @@ samplesLoadPromise
     keyboardNav?.refresh();
   })
   .catch((err) => {
-    els.status.textContent = String(err.message || err);
+    if (els.status) els.status.textContent = String(err.message || err);
     console.error(err);
   });
 

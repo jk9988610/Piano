@@ -2,7 +2,7 @@
  * Piano Studio — offline cache for static assets & samples.
  * Bump CACHE_VERSION with each release (matches VERSION file).
  */
-const CACHE_VERSION = "0.3.7";
+const CACHE_VERSION = "0.3.8";
 const CACHE_NAME = `piano-studio-${CACHE_VERSION}`;
 
 function isSameOrigin(url) {
@@ -32,7 +32,6 @@ function isSampleAsset(pathname) {
   return pathname.endsWith(".mp3");
 }
 
-/** Code assets must be network-first so version bumps cannot mix stale modules. */
 function isCodeAsset(pathname) {
   return pathname.endsWith(".js") || pathname.endsWith(".css") || pathname.endsWith(".json");
 }
@@ -69,6 +68,10 @@ self.addEventListener("activate", (event) => {
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("fetch", (event) => {

@@ -145,12 +145,27 @@ export function createKeyboardNav({ trackEl, viewportEl, miniEl, btnZoomOut, btn
   viewportEl.addEventListener("pointerup", endDrag);
   viewportEl.addEventListener("pointercancel", endDrag);
 
-  btnZoomOut?.addEventListener("click", () => {
+  const bindPress = (el, handler) => {
+    if (!el) return;
+    let lastFire = 0;
+    const fire = (e) => {
+      if (el.disabled) return;
+      if (e.type === "pointerup" && e.pointerType === "mouse" && e.button !== 0) return;
+      const now = performance.now();
+      if (now - lastFire < 400) return;
+      lastFire = now;
+      handler(e);
+    };
+    el.addEventListener("click", fire);
+    el.addEventListener("pointerup", fire);
+  };
+
+  bindPress(btnZoomOut, () => {
     keyboard.zoomOut();
     updateZoomButtons();
   });
 
-  btnZoomIn?.addEventListener("click", () => {
+  bindPress(btnZoomIn, () => {
     keyboard.zoomIn();
     updateZoomButtons();
   });
