@@ -1,10 +1,9 @@
 /**
- * 落块视觉：恒定下落速度，方块中心过判定线时击键（欣赏模式）
- * 练习模式：手动卷轴、最小键宽方块、判定后消失 / 未判定则落至琴键后
+ * 落块矩形：恒定下落速度，矩形中心过判定线时击键（欣赏模式）
+ * 练习模式：手动卷轴、宽度随琴键缩放、判定后消失 / 未判定则落至琴键后
  */
 import { isBlackKey, KEY_SIZE_PRESETS } from "../piano-keyboard.js";
 
-const MIN_KEY_W = KEY_SIZE_PRESETS[0].w;
 const SPAWN_TOP = 8;
 const SCROLL_LERP = 0.055;
 /** 每块从顶缘到中心过线的固定下落时长（ms）；播放开始后先经历此预备段再进入曲谱时间 */
@@ -48,15 +47,25 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   let lineY = 0;
   let playbackEndMs = 0;
 
-  /** 宽高对齐最小琴键宽度 */
-  const BLOCK_SIZE = MIN_KEY_W;
+  function whiteKeyWidth() {
+    const geom = keyboard.getKeyGeometry?.(60);
+    return geom?.width ?? KEY_SIZE_PRESETS[0].w;
+  }
 
-  function currentBlockDims(block) {
-    return { width: BLOCK_SIZE, height: BLOCK_SIZE };
+  function rectHeight() {
+    return whiteKeyWidth();
+  }
+
+  /** 宽度随琴键缩放，高度等于当前白键宽度 */
+  function currentRectDims(block) {
+    const geom = keyboard.getKeyGeometry?.(block.midi);
+    const height = rectHeight();
+    const width = geom?.width ?? height;
+    return { width, height };
   }
 
   function gapAboveKeys() {
-    return BLOCK_SIZE;
+    return rectHeight();
   }
 
   function syncTrackAlign() {
@@ -78,7 +87,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   }
 
   function targetTopFor() {
-    return lineY - BLOCK_SIZE / 2;
+    return lineY - rectHeight() / 2;
   }
 
   function fallDistance() {
@@ -89,11 +98,11 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     return fallDistance() / FALL_LEAD_MS;
   }
 
-  /** 未判定方块完全落入琴键后的移除阈值（stage 坐标） */
+  /** 未判定矩形完全落入琴键后的移除阈值（stage 坐标） */
   function hideThresholdY() {
     const stageH = Math.max(stageEl.clientHeight || 0, 80);
     const keyH = board.offsetHeight || 86;
-    return stageH + keyH - BLOCK_SIZE;
+    return stageH + keyH - rectHeight();
   }
 
   function computeBlockMeta(ev, width) {
@@ -131,7 +140,8 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   }
 
   function blockCenterY(block, elapsed) {
-    return blockTopY(block, elapsed) + BLOCK_SIZE / 2;
+    const { height } = currentRectDims(block);
+    return blockTopY(block, elapsed) + height / 2;
   }
 
   function targetScrollForMidi(midi) {
@@ -167,7 +177,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   }
 
   function flashBlock(block) {
-    const { width } = currentBlockDims(block);
+    const { width } = currentRectDims(block);
     const geom = keyboard.getKeyGeometry?.(block.midi);
     if (geom) {
       const x = geom.centerX - width / 2;
@@ -200,7 +210,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     const geom = keyboard.getKeyGeometry?.(block.midi);
     if (!geom) return;
 
-    const { width, height } = currentBlockDims(block);
+    const { width, height } = currentRectDims(block);
     const topY = blockTopY(block, elapsed);
     const x = geom.centerX - width / 2;
 
@@ -238,7 +248,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       if (block.resolved) continue;
 
       layoutBlock(block, elapsed);
-      const { height } = currentBlockDims(block);
+      const { height } = currentRectDims(block);
 
       if (mode === "enjoy" && !block.centerHit && elapsed >= block.hitMs) {
         block.centerHit = true;
@@ -299,7 +309,9 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   function buildBlocks(events) {
     syncLayout();
     return events.map((ev, i) => {
-      const meta = computeBlockMeta({ ...ev, id: ev.id ?? `n${i}` }, BLOCK_SIZE);
+      const geom = keyboard.getKeyGeometry?.(ev.midi);
+      const width = geom?.width ?? whiteKeyWidth();
+      const meta = computeBlockMeta({ ...ev, id: ev.id ?? `n${i}` }, width);
       return {
         ...meta,
         el: createBlockEl(isBlackKey(ev.midi)),
@@ -344,7 +356,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       return syncLayout();
     },
 
-    /** 绝对距离：返回中心最接近判定线的未判定方块（与按键音高无关） */
+    /** 绝对距离：返回中心最接近判定线的未判定矩形（与按键音高无关） */
     findNearestBlock() {
       if (!playing) return null;
       const elapsed = Math.max(0, performance.now() - startAt);
@@ -363,7 +375,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
         }
       }
 
-      const { width, height } = currentBlockDims(nearest);
+      const { width, height } = currentRectDims(nearest);
       return {
         block: nearest,
         topY: blockTopY(nearest, elapsed),

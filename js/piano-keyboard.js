@@ -8,17 +8,17 @@ const DEFAULT_VEL = 121;
 export const BLACK_W_RATIO = 0.58;
 export const BLACK_H_RATIO = 0.62;
 
-/** 预设键宽/高：默认 index 2 — 较宽、较矮 */
+/** 预设键宽/高：最小档相当于旧版最小形态连按两次加号 */
 export const KEY_SIZE_PRESETS = [
-  { w: 18, h: 70 },
-  { w: 22, h: 78 },
   { w: 26, h: 86 },
   { w: 30, h: 92 },
   { w: 34, h: 98 },
   { w: 38, h: 104 },
+  { w: 42, h: 110 },
+  { w: 46, h: 116 },
 ];
 
-export const DEFAULT_KEY_SIZE_INDEX = 2;
+export const DEFAULT_KEY_SIZE_INDEX = 0;
 
 export function isBlackKey(midi) {
   return BLACK_SEMIS.has(midi % 12);

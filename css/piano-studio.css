@@ -275,7 +275,7 @@ body {
 
 
 
-/* 落块区：卷轴下缘至判定线（大落块道） */
+/* 落块区：卷轴下缘至判定线（下落矩形道） */
 .fall-notes-stage {
   flex: 1;
   position: relative;

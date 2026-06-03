@@ -147,9 +147,7 @@ async function handlePracticeHit(midi, velocity = 96) {
   fallingNotes.markJudged(block);
   judgeHud?.flash(result.judge);
   updatePracticeHud();
-  engine.noteOn(block.midi, block.velocity ?? velocity);
-  keyboard?.pressVisual(block.midi);
-  window.setTimeout(() => keyboard?.releaseVisual(block.midi), 120);
+  engine.noteOn(midi, velocity);
 }
 
 function initFullscreen() {
