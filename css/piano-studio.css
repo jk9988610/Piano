@@ -124,6 +124,9 @@ body {
   background: var(--bg-panel);
   color: var(--text);
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
   transition: background 0.15s, border-color 0.15s;
 }
 
@@ -201,6 +204,9 @@ body {
   border: 1px solid var(--border);
   background: var(--bg-deep);
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
   overflow: hidden;
 }
 

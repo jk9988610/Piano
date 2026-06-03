@@ -2,7 +2,7 @@
  * Piano Studio — offline cache for static assets & samples.
  * Bump CACHE_VERSION with each release (matches VERSION file).
  */
-const CACHE_VERSION = "0.3.6";
+const CACHE_VERSION = "0.3.7";
 const CACHE_NAME = `piano-studio-${CACHE_VERSION}`;
 
 function isSameOrigin(url) {
@@ -26,6 +26,36 @@ function isCacheableAsset(pathname) {
     pathname.endsWith(".json") ||
     isShellAsset(pathname)
   );
+}
+
+function isSampleAsset(pathname) {
+  return pathname.endsWith(".mp3");
+}
+
+/** Code assets must be network-first so version bumps cannot mix stale modules. */
+function isCodeAsset(pathname) {
+  return pathname.endsWith(".js") || pathname.endsWith(".css") || pathname.endsWith(".json");
+}
+
+async function networkFirst(request, cache) {
+  try {
+    const response = await fetch(request);
+    if (response.ok) cache.put(request, response.clone());
+    return response;
+  } catch {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw new Error("offline");
+  }
+}
+
+async function cacheFirst(request, cache) {
+  const cached = await cache.match(request);
+  if (cached) return cached;
+
+  const response = await fetch(request);
+  if (response.ok) cache.put(request, response.clone());
+  return response;
 }
 
 self.addEventListener("install", (event) => {
@@ -64,13 +94,10 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      const cached = await cache.match(request);
-      if (cached) return cached;
-
-      const response = await fetch(request);
-      if (response.ok) cache.put(request, response.clone());
-      return response;
+    caches.open(CACHE_NAME).then((cache) => {
+      if (isSampleAsset(url.pathname)) return cacheFirst(request, cache);
+      if (isCodeAsset(url.pathname)) return networkFirst(request, cache);
+      return networkFirst(request, cache);
     })
   );
 });

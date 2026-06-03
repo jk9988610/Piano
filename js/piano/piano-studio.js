@@ -50,6 +50,8 @@ const scheduler = createScheduler(engine, eventStore);
 const controller = createController({ engine, eventStore, scheduler, onChange: refreshUI });
 
 let scoreLoadedHint = false;
+let keyboardNav = null;
+let fallingNotes = null;
 
 function formatVersionLabel(manifest) {
   const ver = manifest?.version || APP_VERSION;
@@ -89,10 +91,18 @@ function initFullscreen() {
 
   els.btnFullscreen.addEventListener("click", async () => {
     try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await root.requestFullscreen();
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      if (root.requestFullscreen) {
+        await root.requestFullscreen();
+        return;
+      }
+      els.status.textContent = i18n.t("fullscreen.unavailable");
     } catch (err) {
       console.warn("Fullscreen unavailable", err);
+      els.status.textContent = i18n.t("fullscreen.unavailable");
     }
   });
 
@@ -127,6 +137,17 @@ function noteLabel(midi) {
   return Tone.Frequency(midi, "midi").toNote();
 }
 
+const keyboard = renderKeyboard(els.keyboardHost, {
+  onNoteDown: (midi, vel) => controller.handleNote(midi, vel, true),
+  onNoteUp: (midi) => controller.handleNote(midi, 64, false),
+  onFirstInteraction: () => controller.ensureAudioReady().catch(() => {}),
+  onLayoutChange: () => {
+    keyboardNav?.refresh();
+    fallingNotes?.refresh();
+  },
+  labelFor: noteLabel,
+});
+
 function importScoreProject(project) {
   fallingNotes?.stop();
   scheduler.stopPlayback();
@@ -145,22 +166,12 @@ async function loadScoreText(text) {
   importScoreProject(result.project);
 }
 
-let keyboardNav = null;
-let fallingNotes = null;
-
-const keyboard = renderKeyboard(els.keyboardHost, {
-  onNoteDown: (midi, vel) => controller.handleNote(midi, vel, true),
-  onNoteUp: (midi) => controller.handleNote(midi, 64, false),
-  onFirstInteraction: () => controller.ensureAudioReady().catch(() => {}),
-  onLayoutChange: () => {
-    keyboardNav?.refresh();
-    fallingNotes?.refresh();
-  },
-  labelFor: noteLabel,
-});
-
-if (keyboard && els.fallNotesStage) {
-  fallingNotes = createFallingNotesLane(keyboard, els.fallNotesStage);
+try {
+  if (keyboard && els.fallNotesStage) {
+    fallingNotes = createFallingNotesLane(keyboard, els.fallNotesStage);
+  }
+} catch (err) {
+  console.error("Falling notes init failed", err);
 }
 
 const playbackVisualHooks = {
@@ -173,104 +184,113 @@ const playbackVisualHooks = {
   onNoteOff: (midi) => keyboard?.releaseVisual(midi),
 };
 
-if (keyboard && els.keyboardNavTrack) {
-  keyboardNav = createKeyboardNav({
-    trackEl: els.keyboardNavTrack,
-    viewportEl: els.keyboardNavViewport,
-    miniEl: els.keyboardMiniMap,
-    btnZoomOut: els.btnKeyZoomOut,
-    btnZoomIn: els.btnKeyZoomIn,
-    keyboard,
-  });
+try {
+  if (keyboard && els.keyboardNavTrack) {
+    keyboardNav = createKeyboardNav({
+      trackEl: els.keyboardNavTrack,
+      viewportEl: els.keyboardNavViewport,
+      miniEl: els.keyboardMiniMap,
+      btnZoomOut: els.btnKeyZoomOut,
+      btnZoomIn: els.btnKeyZoomIn,
+      keyboard,
+    });
+  }
+} catch (err) {
+  console.error("Keyboard nav init failed", err);
 }
 
-els.btnNew.addEventListener("click", () => {
-  if (!confirm(i18n.t("confirm.new"))) return;
-  fallingNotes?.stop();
-  scheduler.stopPlayback();
-  keyboard?.releaseAll();
-  eventStore.reset();
-  scoreLoadedHint = false;
-  refreshUI();
-});
-
-els.btnOpen.addEventListener("click", () => els.fileInput.click());
-
-els.fileInput.addEventListener("change", async () => {
-  const file = els.fileInput.files?.[0];
-  els.fileInput.value = "";
-  if (!file) return;
-  try {
-    const text = await readFileAsText(file);
-    const result = parseProject(text);
-    if (!result.ok) {
-      alert(errorMessage(result.error, i18n.t.bind(i18n)));
-      return;
-    }
+function bindUi() {
+  els.btnNew?.addEventListener("click", () => {
+    if (!confirm(i18n.t("confirm.new"))) return;
     fallingNotes?.stop();
     scheduler.stopPlayback();
     keyboard?.releaseAll();
-    eventStore.setProject(result.project);
+    eventStore.reset();
     scoreLoadedHint = false;
     refreshUI();
-  } catch (e) {
-    alert(String(e.message || e));
-  }
-});
+  });
 
-els.btnSave.addEventListener("click", () => {
-  downloadProject(eventStore.getProject());
-});
+  els.btnOpen?.addEventListener("click", () => els.fileInput?.click());
 
-els.btnOpenScore?.addEventListener("click", () => els.scoreFileInput?.click());
+  els.fileInput?.addEventListener("change", async () => {
+    const file = els.fileInput.files?.[0];
+    els.fileInput.value = "";
+    if (!file) return;
+    try {
+      const text = await readFileAsText(file);
+      const result = parseProject(text);
+      if (!result.ok) {
+        alert(errorMessage(result.error, i18n.t.bind(i18n)));
+        return;
+      }
+      fallingNotes?.stop();
+      scheduler.stopPlayback();
+      keyboard?.releaseAll();
+      eventStore.setProject(result.project);
+      scoreLoadedHint = false;
+      refreshUI();
+    } catch (e) {
+      alert(String(e.message || e));
+    }
+  });
 
-els.scoreFileInput?.addEventListener("change", async () => {
-  const file = els.scoreFileInput.files?.[0];
-  els.scoreFileInput.value = "";
-  if (!file) return;
-  try {
-    await loadScoreText(await readFileAsText(file));
-  } catch (e) {
-    alert(String(e.message || e));
-  }
-});
+  els.btnSave?.addEventListener("click", () => {
+    downloadProject(eventStore.getProject());
+  });
 
-els.btnDemoScore?.addEventListener("click", async () => {
-  try {
-    const url = new URL("scores/twinkle.json", window.location.href).href;
-    const res = await fetch(`${url}?v=${encodeURIComponent(APP_VERSION)}`);
-    if (!res.ok) throw new Error("fetch failed");
-    await loadScoreText(await res.text());
-  } catch {
-    alert(i18n.t("score.error.load_failed"));
-  }
-});
+  els.btnOpenScore?.addEventListener("click", () => els.scoreFileInput?.click());
 
-els.btnRecord.addEventListener("click", async () => {
-  await controller.ensureAudioReady();
-  eventStore.reset(eventStore.getTitle());
-  scoreLoadedHint = false;
-  controller.startRecording();
-});
+  els.scoreFileInput?.addEventListener("change", async () => {
+    const file = els.scoreFileInput.files?.[0];
+    els.scoreFileInput.value = "";
+    if (!file) return;
+    try {
+      await loadScoreText(await readFileAsText(file));
+    } catch (e) {
+      alert(String(e.message || e));
+    }
+  });
 
-els.btnStopRec.addEventListener("click", () => {
-  keyboard?.releaseAll();
-  controller.stopRecording();
-});
+  els.btnDemoScore?.addEventListener("click", async () => {
+    try {
+      const url = new URL("scores/twinkle.json", window.location.href).href;
+      const res = await fetch(`${url}?v=${encodeURIComponent(APP_VERSION)}`, { cache: "no-store" });
+      if (!res.ok) throw new Error("fetch failed");
+      await loadScoreText(await res.text());
+    } catch {
+      alert(i18n.t("score.error.load_failed"));
+    }
+  });
 
-els.btnPlay.addEventListener("click", async () => {
-  fallingNotes?.stop();
-  keyboard?.releaseAll();
-  await controller.ensureAudioReady();
-  scoreLoadedHint = false;
-  controller.startPlayback(playbackVisualHooks);
-  refreshUI();
-});
+  els.btnRecord?.addEventListener("click", async () => {
+    await controller.ensureAudioReady();
+    eventStore.reset(eventStore.getTitle());
+    scoreLoadedHint = false;
+    controller.startRecording();
+  });
 
-els.btnStopPlay.addEventListener("click", () => controller.stopPlayback());
+  els.btnStopRec?.addEventListener("click", () => {
+    keyboard?.releaseAll();
+    controller.stopRecording();
+  });
+
+  els.btnPlay?.addEventListener("click", async () => {
+    fallingNotes?.stop();
+    keyboard?.releaseAll();
+    await controller.ensureAudioReady();
+    scoreLoadedHint = false;
+    controller.startPlayback(playbackVisualHooks);
+    refreshUI();
+  });
+
+  els.btnStopPlay?.addEventListener("click", () => controller.stopPlayback());
+
+  initFullscreen();
+}
+
+bindUi();
 
 loadVersionBadge();
-initFullscreen();
 
 samplesLoadPromise
   .then(() => {
