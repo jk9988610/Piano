@@ -95,10 +95,12 @@ async function loadVersionBadge() {
 
 function syncPlayModeButton() {
   if (!els.btnPlayMode) return;
-  const practice = playMode === "practice";
-  els.btnPlayMode.textContent = i18n.t(practice ? "mode.practice" : "mode.enjoy");
-  els.btnPlayMode.classList.toggle("active", practice);
-  els.btnPlayMode.title = i18n.t(practice ? "mode.practiceHint" : "mode.enjoyHint");
+  const labelKey = playMode === "practice" ? "mode.practice" : "mode.enjoy";
+  const hintKey = playMode === "practice" ? "mode.practiceHint" : "mode.enjoyHint";
+  const label = i18n.t(labelKey);
+  els.btnPlayMode.textContent = label;
+  els.btnPlayMode.title = i18n.t(hintKey);
+  els.btnPlayMode.setAttribute("aria-label", label);
 }
 
 function resetPracticeSession() {

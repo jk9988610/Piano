@@ -168,12 +168,7 @@ body {
 .btn-mode {
   color: #fbbf24;
   border-color: #92400e;
-  min-width: 3.5rem;
-}
-
-.btn-mode.active {
-  background: #422006;
-  color: #fde68a;
+  min-width: 5.5rem;
 }
 
 .btn-play {
