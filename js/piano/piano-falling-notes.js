@@ -1,23 +1,21 @@
 /**
- * 播放落块视觉：导航条下方独立落块区，与琴键横向同步
+ * 落块视觉：紧挨琴键上方，与键盘共用横向滚动
  */
 import { isBlackKey, KEY_SIZE_PRESETS } from "../piano-keyboard.js";
 
-const FALL_LEAD_MS = 2200;
-const LANE_HEIGHT = 120;
+const FALL_LEAD_MS = 2000;
+/** 落块道高度；判定线在底部，紧贴琴键顶缘 */
+const LANE_HEIGHT_PX = 64;
 const MIN_KEY_W = KEY_SIZE_PRESETS[0].w;
 
-export function createFallingNotesLane(keyboard, stageEl) {
-  if (!keyboard?.boardEl || !keyboard?.scrollEl || !stageEl) return null;
+export function createFallingNotesLane(keyboard) {
+  if (!keyboard?.scrollEl || !keyboard?.boardEl) return null;
 
-  const board = keyboard.boardEl;
   const scroll = keyboard.scrollEl;
+  const board = keyboard.boardEl;
 
-  stageEl.innerHTML = "";
-  stageEl.classList.add("fall-notes-stage--ready");
-
-  const track = document.createElement("div");
-  track.className = "fall-notes-track";
+  const lane = document.createElement("div");
+  lane.className = "fall-notes-lane";
 
   const inner = document.createElement("div");
   inner.className = "fall-notes-inner";
@@ -26,8 +24,10 @@ export function createFallingNotesLane(keyboard, stageEl) {
   hitLine.className = "piano-note-hit-line";
   inner.appendChild(hitLine);
 
-  track.appendChild(inner);
-  stageEl.appendChild(track);
+  lane.appendChild(inner);
+  scroll.insertBefore(lane, board);
+
+  scroll.classList.add("piano-keyboard-scroll--with-lane");
 
   let rafId = 0;
   let playing = false;
@@ -36,15 +36,12 @@ export function createFallingNotesLane(keyboard, stageEl) {
   const releaseTimers = [];
 
   function hitLineY() {
-    return LANE_HEIGHT - 2;
+    return LANE_HEIGHT_PX - 1;
   }
 
-  function syncTrackPosition() {
-    const boardRect = board.getBoundingClientRect();
-    const stageRect = stageEl.getBoundingClientRect();
+  function syncLaneWidth() {
     const w = board.offsetWidth || 1;
-    track.style.width = `${w}px`;
-    track.style.transform = `translateX(${boardRect.left - stageRect.left}px)`;
+    lane.style.width = `${w}px`;
   }
 
   function blockSize(keyWidth) {
@@ -71,19 +68,17 @@ export function createFallingNotesLane(keyboard, stageEl) {
 
     block.el.style.width = `${size}px`;
     block.el.style.height = `${size}px`;
-    block.el.style.transform = `translate(${x}px, ${y}px)`;
+    block.el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
     block.el.style.zIndex = geom.isBlack ? "3" : "2";
 
-    const crossed = progress >= 1 || y >= lineY - 0.5;
-
-    if (!block.hit && crossed) {
+    if (!block.hit && (progress >= 1 || y >= lineY - 0.5)) {
       block.hit = true;
       block.el.style.setProperty("--fx", `${x}px`);
       block.el.style.setProperty("--fy", `${y}px`);
       block.el.classList.add("fall-note-flash");
       keyboard.pressVisual?.(block.midi);
       window.setTimeout(() => {
-        if (block.el.parentNode) block.el.remove();
+        block.el.remove();
         block.removed = true;
       }, 160);
     }
@@ -91,18 +86,18 @@ export function createFallingNotesLane(keyboard, stageEl) {
 
   function tick() {
     if (!playing) return;
-    syncTrackPosition();
+    syncLaneWidth();
     const elapsed = Math.max(0, performance.now() - startAt);
 
-    blocks.forEach((block) => {
-      if (block.removed) return;
+    for (const block of blocks) {
+      if (block.removed) continue;
       if (elapsed < block.spawnMs) {
-        block.el.style.opacity = "0";
-        return;
+        block.el.style.visibility = "hidden";
+        continue;
       }
-      block.el.style.opacity = "1";
+      block.el.style.visibility = "visible";
       layoutBlock(block, elapsed);
-    });
+    }
 
     rafId = requestAnimationFrame(tick);
   }
@@ -119,26 +114,18 @@ export function createFallingNotesLane(keyboard, stageEl) {
   }
 
   function scheduleReleases(events, baseStart) {
-    events.forEach((ev) => {
+    for (const ev of events) {
       const offMs = ev.offMs ?? ev.onMs + 80;
       const delay = Math.max(0, baseStart + offMs - performance.now());
       releaseTimers.push(
-        window.setTimeout(() => {
-          keyboard.releaseVisual?.(ev.midi);
-        }, delay)
+        window.setTimeout(() => keyboard.releaseVisual?.(ev.midi), delay)
       );
-    });
+    }
   }
 
-  const onScroll = () => syncTrackPosition();
-  scroll.addEventListener("scroll", onScroll, { passive: true });
-  window.addEventListener("resize", syncTrackPosition);
-
-  const ro = new ResizeObserver(syncTrackPosition);
+  const ro = new ResizeObserver(syncLaneWidth);
   ro.observe(board);
-  ro.observe(stageEl);
-
-  syncTrackPosition();
+  syncLaneWidth();
 
   return {
     start(events, playbackStartAt) {
@@ -147,12 +134,11 @@ export function createFallingNotesLane(keyboard, stageEl) {
 
       playing = true;
       startAt = playbackStartAt;
-      syncTrackPosition();
+      syncLaneWidth();
 
       blocks = events.map((ev) => ({
         midi: ev.midi,
         onMs: ev.onMs,
-        offMs: ev.offMs ?? ev.onMs + 80,
         spawnMs: Math.max(0, ev.onMs - FALL_LEAD_MS),
         el: createBlockEl(isBlackKey(ev.midi)),
         hit: false,
@@ -168,16 +154,14 @@ export function createFallingNotesLane(keyboard, stageEl) {
     },
 
     refresh() {
-      syncTrackPosition();
+      syncLaneWidth();
     },
 
     destroy() {
       clearAll();
-      scroll.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", syncTrackPosition);
       ro.disconnect();
-      stageEl.innerHTML = "";
-      stageEl.classList.remove("fall-notes-stage--ready");
+      lane.remove();
+      scroll.classList.remove("piano-keyboard-scroll--with-lane");
     },
   };
 }

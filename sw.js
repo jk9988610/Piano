@@ -2,7 +2,7 @@
  * Piano Studio — offline cache for static assets & samples.
  * Bump CACHE_VERSION with each release (matches VERSION file).
  */
-const CACHE_VERSION = "0.3.2";
+const CACHE_VERSION = "0.3.3";
 const CACHE_NAME = `piano-studio-${CACHE_VERSION}`;
 
 function isSameOrigin(url) {
