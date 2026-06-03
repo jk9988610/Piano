@@ -278,6 +278,8 @@ body {
 /* 落块区：卷轴下缘至判定线（大落块道） */
 .fall-notes-stage {
   flex: 1;
+  position: relative;
+  z-index: 5;
   min-height: 120px;
   position: relative;
   min-height: 100px;
@@ -352,6 +354,8 @@ body {
 }
 
 .keyboard-area {
+  position: relative;
+  z-index: 15;
   flex: 0 0 auto;
   display: flex;
   align-items: flex-end;
@@ -520,4 +524,13 @@ body {
 
 .fall-notes-stage--playing .piano-note-hit-line {
   box-shadow: 0 0 14px rgba(255, 255, 255, 0.55);
+}
+
+
+.fall-notes-stage--practice {
+  overflow: visible;
+}
+
+.fall-notes-stage--practice .fall-note--fallthrough {
+  opacity: 0.92;
 }

@@ -1,6 +1,6 @@
 /**
  * 落块视觉：恒定下落速度，方块中心过判定线时击键（欣赏模式）
- * 练习模式：仅落块 + 位置查询，供玩家手动击键评分
+ * 练习模式：手动卷轴、动态键宽、判定后消失 / 未判定则落至琴键后
  */
 import { isBlackKey, KEY_SIZE_PRESETS, DEFAULT_KEY_SIZE_INDEX } from "../piano-keyboard.js";
 
@@ -49,6 +49,11 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     return Math.max(MIN_KEY_W, Math.round(keyWidth * BLOCK_SCALE));
   }
 
+  function currentBlockSize(block) {
+    const geom = keyboard.getKeyGeometry?.(block.midi);
+    return geom ? blockSize(geom.width) : block.size;
+  }
+
   function gapAboveKeys() {
     const geom = keyboard.getKeyGeometry?.(60) || keyboard.getKeyGeometry?.(21);
     return geom ? blockSize(geom.width) : DEFAULT_BLOCK_GAP;
@@ -62,7 +67,6 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     track.style.transform = `translateX(${boardRect.left - stageRect.left}px)`;
   }
 
-  /** 判定线固定在落块区内部底缘上方，避免溢出被裁切 */
   function syncLayout() {
     syncTrackAlign();
     const stageH = Math.max(stageEl.clientHeight || 0, 80);
@@ -74,6 +78,17 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
 
   function targetTopFor(size) {
     return Math.max(8, lineY - size / 2);
+  }
+
+  function fallSpeedPxPerMs(size) {
+    return targetTopFor(size) / FALL_LEAD_MS;
+  }
+
+  /** 未判定方块完全落入琴键后的移除阈值（stage 坐标） */
+  function hideThresholdY(size) {
+    const stageH = Math.max(stageEl.clientHeight || 0, 80);
+    const keyH = board.offsetHeight || 86;
+    return stageH + keyH - size;
   }
 
   function computeBlockMeta(ev, size) {
@@ -94,7 +109,6 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     };
   }
 
-  /** 恒定下落：virtualSpawn 可为负，开头音符视为已在途中 */
   function blockProgress(block, elapsed) {
     const t = elapsed - block.virtualSpawnMs;
     if (t <= 0) return 0;
@@ -103,12 +117,20 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   }
 
   function blockTopY(block, elapsed) {
-    const progress = blockProgress(block, elapsed);
-    return progress * targetTopFor(block.size);
+    const size = currentBlockSize(block);
+    const targetAtLine = targetTopFor(size);
+
+    if (mode === "practice" && elapsed > block.onMs) {
+      const postMs = elapsed - block.onMs;
+      return targetAtLine + postMs * fallSpeedPxPerMs(size);
+    }
+
+    return blockProgress(block, elapsed) * targetAtLine;
   }
 
   function blockCenterY(block, elapsed) {
-    return blockTopY(block, elapsed) + block.size / 2;
+    const size = currentBlockSize(block);
+    return blockTopY(block, elapsed) + size / 2;
   }
 
   function targetScrollForMidi(midi) {
@@ -119,6 +141,8 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   }
 
   function updateScrollFollow(elapsed) {
+    if (mode === "practice") return;
+
     const active = blocks.find((b) => !b.removed && !b.resolved && elapsed >= b.virtualSpawnMs);
     if (!active) return;
 
@@ -142,9 +166,10 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   }
 
   function flashBlock(block) {
+    const size = currentBlockSize(block);
     const geom = keyboard.getKeyGeometry?.(block.midi);
     if (geom) {
-      const x = geom.centerX - block.size / 2;
+      const x = geom.centerX - size / 2;
       block.el.style.setProperty("--fx", `${x}px`);
       block.el.style.setProperty("--fy", `${lineY}px`);
     }
@@ -155,25 +180,43 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     }, 180);
   }
 
-  function resolveBlock(block) {
+  function removeBlockImmediate(block) {
+    if (block.removed) return;
+    block.resolved = true;
+    block.el.remove();
+    block.removed = true;
+    if (followMidi === block.midi) followMidi = null;
+  }
+
+  function resolveBlockEnjoy(block) {
     if (block.resolved) return;
     block.resolved = true;
     flashBlock(block);
     if (followMidi === block.midi) followMidi = null;
   }
 
-  function layoutBlock(block, elapsed, progress = blockProgress(block, elapsed)) {
+  function layoutBlock(block, elapsed) {
     const geom = keyboard.getKeyGeometry?.(block.midi);
     if (!geom) return;
 
-    const topY = progress * targetTopFor(block.size);
-    const x = geom.centerX - block.size / 2;
+    const size = currentBlockSize(block);
+    const topY = blockTopY(block, elapsed);
+    const x = geom.centerX - size / 2;
 
-    block.el.style.width = `${block.size}px`;
-    block.el.style.height = `${block.size}px`;
+    block.el.style.width = `${size}px`;
+    block.el.style.height = `${size}px`;
     block.el.style.transform = `translate3d(${x}px, ${topY}px, 0)`;
-    block.el.style.zIndex = geom.isBlack ? "5" : "4";
+
+    if (mode === "practice" && topY > lineY - size / 2) {
+      block.el.classList.add("fall-note--fallthrough");
+      block.el.style.zIndex = "1";
+    } else {
+      block.el.classList.remove("fall-note--fallthrough");
+      block.el.style.zIndex = geom.isBlack ? "5" : "4";
+    }
+
     block.topY = topY;
+    block.size = size;
   }
 
   function tick() {
@@ -194,18 +237,25 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       block.el.style.opacity = "1";
       if (block.resolved) continue;
 
-      layoutBlock(block, elapsed, progress);
-      block.topY = blockTopY(block, elapsed);
+      layoutBlock(block, elapsed);
+      const size = currentBlockSize(block);
 
       if (mode === "enjoy" && !block.centerHit && elapsed >= block.onMs) {
         block.centerHit = true;
         onCenterHit?.(block.midi, block.velocity, block);
-        resolveBlock(block);
-      } else if (mode === "practice" && !block.judged && !block.resolved) {
-        if (block.topY > lineY + block.size / 2) {
+        resolveBlockEnjoy(block);
+        continue;
+      }
+
+      if (mode === "practice") {
+        if (!block.judged && block.topY > lineY + size / 2) {
           block.judged = true;
+          block.missed = true;
           block.onMiss?.(block);
-          resolveBlock(block);
+        }
+
+        if (block.topY > hideThresholdY(size)) {
+          removeBlockImmediate(block);
         }
       }
     }
@@ -222,17 +272,23 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
 
   function finalizeUnjudged() {
     for (const block of blocks) {
-      if (block.judged || block.removed) continue;
-      block.judged = true;
-      block.onMiss?.(block);
-      if (!block.resolved) resolveBlock(block);
+      if (block.removed) continue;
+      if (!block.judged) {
+        block.judged = true;
+        block.onMiss?.(block);
+      }
+      if (mode === "enjoy" && !block.resolved) {
+        resolveBlockEnjoy(block);
+      } else if (!block.removed) {
+        removeBlockImmediate(block);
+      }
     }
   }
 
   function clearAll() {
     playing = false;
     followMidi = null;
-    stageEl.classList.remove("fall-notes-stage--playing");
+    stageEl.classList.remove("fall-notes-stage--playing", "fall-notes-stage--practice");
     if (rafId) cancelAnimationFrame(rafId);
     rafId = 0;
     blocks.forEach((b) => b.el.remove());
@@ -252,9 +308,14 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
         centerHit: false,
         resolved: false,
         judged: false,
+        missed: false,
         onMiss: null,
       };
     });
+  }
+
+  function applyModeClass() {
+    stageEl.classList.toggle("fall-notes-stage--practice", mode === "practice");
   }
 
   const onScroll = () => syncLayout();
@@ -269,6 +330,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   return {
     setMode(next) {
       mode = next === "practice" ? "practice" : "enjoy";
+      applyModeClass();
     },
 
     getMode() {
@@ -306,12 +368,13 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
           bestDist = d;
         }
       }
-      return { block: best, topY: blockTopY(best, elapsed), lineY, size: best.size, elapsed };
+      const size = currentBlockSize(best);
+      return { block: best, topY: blockTopY(best, elapsed), lineY, size, elapsed };
     },
 
     markJudged(block) {
       block.judged = true;
-      resolveBlock(block);
+      removeBlockImmediate(block);
     },
 
     start(events, playbackStartAt, options = {}) {
@@ -324,6 +387,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       followMidi = null;
       stageEl.classList.add("fall-notes-stage--playing");
       stageEl.setAttribute("aria-hidden", "false");
+      applyModeClass();
 
       blocks = buildBlocks(events);
       playbackEndMs = Math.max(...blocks.map((b) => b.offMs)) + 400;
@@ -349,7 +413,7 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
       window.removeEventListener("resize", syncLayout);
       ro.disconnect();
       stageEl.innerHTML = "";
-      stageEl.classList.remove("fall-notes-stage--active", "fall-notes-stage--playing");
+      stageEl.classList.remove("fall-notes-stage--active", "fall-notes-stage--playing", "fall-notes-stage--practice");
       stageEl.setAttribute("aria-hidden", "true");
     },
   };
