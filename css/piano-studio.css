@@ -257,21 +257,13 @@ body {
 
 
 
-/* 落块道：琴键正上方，固定高度 */
-.piano-keyboard-host--with-fall {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  width: 100%;
-}
-
-.fall-notes-overlay {
+/* 落块区：卷轴下缘至判定线（大落块道） */
+.fall-notes-stage {
+  flex: 1;
   position: relative;
-  flex-shrink: 0;
-  width: 100%;
-  min-height: 48px;
+  min-height: 100px;
   overflow: hidden;
-  background: linear-gradient(180deg, #1a1a28 0%, #101018 100%);
+  background: linear-gradient(180deg, var(--bg-panel) 0%, #12121c 45%, #0e0e14 100%);
 }
 
 .fall-notes-track {
@@ -294,8 +286,8 @@ body {
   right: 0;
   height: 2px;
   margin: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.45);
   z-index: 12;
   pointer-events: none;
 }
@@ -339,11 +331,11 @@ body {
 }
 
 .keyboard-area {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 0.25rem 0.5rem 1.5rem;
+  padding: 0 0.5rem 1.25rem;
   overflow: hidden;
   background: radial-gradient(ellipse at 50% 100%, #1a1a22 0%, var(--bg-deep) 70%);
 }

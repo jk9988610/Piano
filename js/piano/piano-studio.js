@@ -34,6 +34,7 @@ const els = {
   keyboardNavTrack: document.getElementById("keyboardNavTrack"),
   keyboardMiniMap: document.getElementById("keyboardMiniMap"),
   keyboardNavViewport: document.getElementById("keyboardNavViewport"),
+  fallNotesStage: document.getElementById("fallNotesStage"),
 };
 
 const i18n = createI18n(resolveLang());
@@ -158,13 +159,18 @@ const keyboard = renderKeyboard(els.keyboardHost, {
   labelFor: noteLabel,
 });
 
-if (keyboard) {
-  fallingNotes = createFallingNotesLane(keyboard);
+if (keyboard && els.fallNotesStage) {
+  fallingNotes = createFallingNotesLane(keyboard, els.fallNotesStage);
 }
 
 const playbackVisualHooks = {
   onPlaybackStart: (events, startAt) => fallingNotes?.start(events, startAt),
-  onPlaybackStop: () => fallingNotes?.stop(),
+  onPlaybackStop: () => {
+    fallingNotes?.stop();
+    keyboard?.releaseAllVisual();
+  },
+  onNoteOn: (midi) => keyboard?.pressVisual(midi),
+  onNoteOff: (midi) => keyboard?.releaseVisual(midi),
 };
 
 if (keyboard && els.keyboardNavTrack) {

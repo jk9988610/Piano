@@ -3,17 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="piano-app-version" content="0.3.5" />
+    <meta name="piano-app-version" content="0.3.6" />
     <title>钢琴工作室 · Piano Studio</title>
-    <link rel="preload" href="js/tone.min.js?v=0.3.5" as="script" />
-    <link rel="modulepreload" href="js/piano/piano-studio.js?v=0.3.5" />
-    <link rel="stylesheet" href="css/piano-studio.css?v=0.3.5" />
+    <link rel="preload" href="js/tone.min.js?v=0.3.6" as="script" />
+    <link rel="modulepreload" href="js/piano/piano-studio.js?v=0.3.6" />
+    <link rel="stylesheet" href="css/piano-studio.css?v=0.3.6" />
   </head>
   <body>
     <div id="app" class="app-shell">
       <header class="app-header">
         <h1 class="app-title" data-i18n="app.title">钢琴工作室</h1>
-        <span id="versionBadge" class="version-badge">v0.3.5</span>
+        <span id="versionBadge" class="version-badge">v0.3.6</span>
         <div class="file-actions">
           <button type="button" id="btnNew" class="btn btn-ghost" data-i18n="file.new">新建</button>
           <button type="button" id="btnOpen" class="btn btn-ghost" data-i18n="file.open">打开</button>
@@ -44,6 +44,7 @@
         <button type="button" id="btnKeyZoomIn" class="btn btn-icon btn-zoom" title="放大琴键" aria-label="放大琴键">+</button>
       </section>
 
+      <section id="fallNotesStage" class="fall-notes-stage" aria-hidden="true"></section>
 
       <main class="keyboard-area">
         <div id="keyboardHost"></div>
@@ -53,7 +54,7 @@
     <input type="file" id="fileInput" accept=".hfproj,application/json" hidden />
     <input type="file" id="scoreFileInput" accept=".json,.hfscore,application/json" hidden />
 
-    <script src="js/tone.min.js?v=0.3.5"></script>
-    <script type="module" src="js/piano/piano-studio.js?v=0.3.5"></script>
+    <script src="js/tone.min.js?v=0.3.6"></script>
+    <script type="module" src="js/piano/piano-studio.js?v=0.3.6"></script>
   </body>
 </html>

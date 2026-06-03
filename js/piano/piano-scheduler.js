@@ -6,12 +6,15 @@ export function createScheduler(engine, eventStore) {
   let playbackEndTimer = null;
   let onPlaybackEnd = null;
   let playbackHooks = null;
+  let visualTimers = [];
 
   function clearPlaybackTimers() {
     if (playbackEndTimer) {
       clearTimeout(playbackEndTimer);
       playbackEndTimer = null;
     }
+    visualTimers.forEach((id) => clearTimeout(id));
+    visualTimers = [];
   }
 
   function nowRecordingMs() {
@@ -63,10 +66,19 @@ export function createScheduler(engine, eventStore) {
       hooks.onPlaybackStart?.(events, startAt);
 
       const baseAudio = Tone.now() + 0.08;
+      const now = performance.now();
+
       events.forEach((ev) => {
         const offMs = ev.offMs ?? ev.onMs + 80;
         engine.noteOn(ev.midi, ev.velocity, baseAudio + ev.onMs / 1000);
         engine.noteOff(ev.midi, baseAudio + offMs / 1000);
+
+        visualTimers.push(
+          setTimeout(() => hooks.onNoteOn?.(ev.midi, ev.velocity), Math.max(0, startAt + ev.onMs - now))
+        );
+        visualTimers.push(
+          setTimeout(() => hooks.onNoteOff?.(ev.midi), Math.max(0, startAt + offMs - now))
+        );
       });
 
       playbackEndTimer = setTimeout(() => {
