@@ -11,6 +11,7 @@
 | 产品 / 架构规格 | ✅ `docs/PIANO-STUDIO-P0.md` |
 | 应用代码 | ✅ `index.html` + `js/` + `samples/` |
 | GitHub Pages | ✅ `.github/workflows/deploy-pages.yml` |
+| 乐谱演奏（JSON → 播放） | ✅ v0.3.0 |
 | Card-World 嵌入 | ⬜ P0 完成后 |
 
 ## 本地预览
@@ -38,6 +39,7 @@ js/
   piano-keyboard.js
   piano/               # piano-core 模块
 samples/INS-008/       # Salamander 钢琴采样
+scores/                # 示例 JSON 乐谱（piano-score-v1）
 ```
 
 ## 相关仓库

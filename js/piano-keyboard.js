@@ -259,7 +259,6 @@ export function renderKeyboard(container, opts = {}) {
     const key = document.createElement("div");
     key.className = "piano-key piano-key-white";
     key.dataset.midi = String(midi);
-    key.title = labelFor(midi);
     key.setAttribute("role", "button");
     key.setAttribute("aria-label", labelFor(midi));
     key.setAttribute("aria-pressed", "false");
@@ -278,7 +277,6 @@ export function renderKeyboard(container, opts = {}) {
     const key = document.createElement("div");
     key.className = "piano-key piano-key-black";
     key.dataset.midi = String(midi);
-    key.title = labelFor(midi);
     key.setAttribute("role", "button");
     key.setAttribute("aria-label", labelFor(midi));
     key.setAttribute("aria-pressed", "false");

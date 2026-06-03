@@ -2,10 +2,12 @@ import { renderKeyboard } from "../piano-keyboard.js";
 import { createEngine } from "../piano-engine.js";
 import { createEmptyProject, createEventStore } from "./piano-event-store.js";
 import { downloadProject, parseProject, readFileAsText, errorMessage } from "./piano-project-io.js";
+import { parseScoreToProject, scoreErrorMessage } from "./piano-score-io.js";
 import { createScheduler, formatTimeMs } from "./piano-scheduler.js";
 import { createController } from "./piano-controller.js";
 import { createI18n, resolveLang } from "./piano-i18n.js";
 import { createKeyboardNav } from "./piano-keyboard-nav.js";
+import { installAppGuards, registerServiceWorker } from "./piano-app-guard.js";
 
 const APP_VERSION = document.querySelector('meta[name="piano-app-version"]')?.content || "0.1.0";
 
@@ -15,6 +17,7 @@ const els = {
   version: document.getElementById("versionBadge"),
   keyboardHost: document.getElementById("keyboardHost"),
   fileInput: document.getElementById("fileInput"),
+  scoreFileInput: document.getElementById("scoreFileInput"),
   btnNew: document.getElementById("btnNew"),
   btnOpen: document.getElementById("btnOpen"),
   btnSave: document.getElementById("btnSave"),
@@ -22,6 +25,8 @@ const els = {
   btnStopRec: document.getElementById("btnStopRec"),
   btnPlay: document.getElementById("btnPlay"),
   btnStopPlay: document.getElementById("btnStopPlay"),
+  btnOpenScore: document.getElementById("btnOpenScore"),
+  btnDemoScore: document.getElementById("btnDemoScore"),
   btnFullscreen: document.getElementById("btnFullscreen"),
   btnKeyZoomOut: document.getElementById("btnKeyZoomOut"),
   btnKeyZoomIn: document.getElementById("btnKeyZoomIn"),
@@ -33,10 +38,16 @@ const els = {
 const i18n = createI18n(resolveLang());
 i18n.apply();
 
+installAppGuards(document.getElementById("app"));
+registerServiceWorker(APP_VERSION);
+
 const engine = createEngine();
+const samplesLoadPromise = engine.ensureLoaded();
 const eventStore = createEventStore(createEmptyProject("新演奏", APP_VERSION));
 const scheduler = createScheduler(engine, eventStore);
 const controller = createController({ engine, eventStore, scheduler, onChange: refreshUI });
+
+let scoreLoadedHint = false;
 
 function formatVersionLabel(manifest) {
   const ver = manifest?.version || APP_VERSION;
@@ -98,16 +109,37 @@ function refreshUI() {
   els.btnStopRec.disabled = transport !== "recording";
   els.btnPlay.disabled = transport !== "idle" || dur === 0;
   els.btnStopPlay.disabled = transport !== "playing";
+  const idle = transport === "idle";
+  els.btnOpenScore.disabled = !idle;
+  els.btnDemoScore.disabled = !idle;
 
   els.btnRecord.classList.toggle("active", transport === "recording");
 
   if (transport === "recording") els.status.textContent = i18n.t("status.recording");
   else if (transport === "playing") els.status.textContent = i18n.t("status.playing");
-  else els.status.textContent = engine.isLoaded() ? i18n.t("status.ready") : i18n.t("status.loading");
+  else if (scoreLoadedHint) els.status.textContent = i18n.t("status.scoreLoaded");
+  else els.status.textContent = engine.isLoaded() ? i18n.t("status.ready") : i18n.t("status.loadingSamples");
 }
 
 function noteLabel(midi) {
   return Tone.Frequency(midi, "midi").toNote();
+}
+
+function importScoreProject(project) {
+  scheduler.stopPlayback();
+  keyboard?.releaseAll();
+  eventStore.setProject(project);
+  scoreLoadedHint = true;
+  refreshUI();
+}
+
+async function loadScoreText(text) {
+  const result = parseScoreToProject(text, APP_VERSION);
+  if (!result.ok) {
+    alert(scoreErrorMessage(result.error, i18n.t.bind(i18n)));
+    return;
+  }
+  importScoreProject(result.project);
 }
 
 let keyboardNav = null;
@@ -136,6 +168,7 @@ els.btnNew.addEventListener("click", () => {
   scheduler.stopPlayback();
   keyboard?.releaseAll();
   eventStore.reset();
+  scoreLoadedHint = false;
   refreshUI();
 });
 
@@ -155,6 +188,7 @@ els.fileInput.addEventListener("change", async () => {
     scheduler.stopPlayback();
     keyboard?.releaseAll();
     eventStore.setProject(result.project);
+    scoreLoadedHint = false;
     refreshUI();
   } catch (e) {
     alert(String(e.message || e));
@@ -165,9 +199,34 @@ els.btnSave.addEventListener("click", () => {
   downloadProject(eventStore.getProject());
 });
 
+els.btnOpenScore?.addEventListener("click", () => els.scoreFileInput?.click());
+
+els.scoreFileInput?.addEventListener("change", async () => {
+  const file = els.scoreFileInput.files?.[0];
+  els.scoreFileInput.value = "";
+  if (!file) return;
+  try {
+    await loadScoreText(await readFileAsText(file));
+  } catch (e) {
+    alert(String(e.message || e));
+  }
+});
+
+els.btnDemoScore?.addEventListener("click", async () => {
+  try {
+    const url = new URL("scores/twinkle.json", window.location.href).href;
+    const res = await fetch(`${url}?v=${encodeURIComponent(APP_VERSION)}`);
+    if (!res.ok) throw new Error("fetch failed");
+    await loadScoreText(await res.text());
+  } catch {
+    alert(i18n.t("score.error.load_failed"));
+  }
+});
+
 els.btnRecord.addEventListener("click", async () => {
   await controller.ensureAudioReady();
   eventStore.reset(eventStore.getTitle());
+  scoreLoadedHint = false;
   controller.startRecording();
 });
 
@@ -179,6 +238,7 @@ els.btnStopRec.addEventListener("click", () => {
 els.btnPlay.addEventListener("click", async () => {
   keyboard?.releaseAll();
   await controller.ensureAudioReady();
+  scoreLoadedHint = false;
   controller.startPlayback();
   refreshUI();
 });
@@ -188,8 +248,7 @@ els.btnStopPlay.addEventListener("click", () => controller.stopPlayback());
 loadVersionBadge();
 initFullscreen();
 
-engine
-  .ensureLoaded()
+samplesLoadPromise
   .then(() => {
     controller.initMidi();
     refreshUI();
