@@ -2,7 +2,7 @@
  * 落块矩形：恒定下落速度，矩形中心过判定线时击键（欣赏模式）
  * 练习模式：手动卷轴、宽度随琴键缩放、判定后消失 / 未判定则落至琴键后
  */
-import { isBlackKey, KEY_SIZE_PRESETS } from "../piano-keyboard.js";
+import { isBlackKey, KEY_SIZE_PRESETS, getKeyMetrics } from "../piano-keyboard.js";
 
 const SPAWN_TOP = 8;
 const SCROLL_LERP = 0.055;
@@ -47,20 +47,24 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   let lineY = 0;
   let playbackEndMs = 0;
 
+  function boardMetrics() {
+    return getKeyMetrics(keyboard.boardEl);
+  }
+
   function whiteKeyWidth() {
-    const geom = keyboard.getKeyGeometry?.(60);
-    return geom?.width ?? KEY_SIZE_PRESETS[0].w;
+    return boardMetrics().whiteW;
   }
 
   function rectHeight() {
     return whiteKeyWidth();
   }
 
-  /** 宽度随琴键缩放，高度等于当前白键宽度 */
+  /** 宽度随琴键 CSS 变量与布局同步，黑键窄、白键宽 */
   function currentRectDims(block) {
     const geom = keyboard.getKeyGeometry?.(block.midi);
-    const height = rectHeight();
-    const width = geom?.width ?? height;
+    const { whiteW, blackW } = boardMetrics();
+    const height = whiteW;
+    const width = geom?.width ?? (isBlackKey(block.midi) ? blackW : whiteW);
     return { width, height };
   }
 
@@ -425,7 +429,14 @@ export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
     },
 
     refresh() {
+      keyboard.refreshLayout?.();
       syncLayout();
+      if (!playing) return;
+      const elapsed = Math.max(0, performance.now() - startAt);
+      for (const block of blocks) {
+        if (block.removed || elapsed < block.spawnMs) continue;
+        layoutBlock(block, elapsed);
+      }
     },
 
     destroy() {

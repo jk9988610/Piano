@@ -39,6 +39,10 @@ export function whiteIndexLeftOfBlack(blackMidi, whiteMidis) {
   return idx >= 0 ? idx : 0;
 }
 
+export function getKeyMetrics(board) {
+  return readKeyMetrics(board);
+}
+
 function readKeyMetrics(board) {
   const cs = getComputedStyle(board);
   const whiteW = parseFloat(cs.getPropertyValue("--pk-white-w")) || 26;
