@@ -2,10 +2,27 @@ import { createScheduler } from "./piano-scheduler.js";
 
 export function createController({ engine, eventStore, scheduler, onChange }) {
   const heldKeys = new Set();
-  let midiAccess = null;
+  let audioReady = false;
+  let audioReadyPromise = null;
 
   function emit() {
     onChange?.();
+  }
+
+  function ensureAudioReady() {
+    if (audioReady) return Promise.resolve();
+    if (!audioReadyPromise) {
+      audioReadyPromise = engine
+        .unlock()
+        .then(() => {
+          audioReady = true;
+        })
+        .catch((err) => {
+          audioReadyPromise = null;
+          throw err;
+        });
+    }
+    return audioReadyPromise;
   }
 
   function canPlayLive() {
@@ -13,40 +30,47 @@ export function createController({ engine, eventStore, scheduler, onChange }) {
     return t === "idle" || t === "recording";
   }
 
-  async function handleNote(midi, velocity, isOn) {
+  function playNote(midi, velocity) {
+    engine.noteOn(midi, velocity);
+    heldKeys.add(midi);
+    if (scheduler.getTransport() === "recording") {
+      eventStore.noteOn(midi, scheduler.recordingNowMs(), velocity);
+    }
+  }
+
+  function stopNote(midi) {
+    engine.noteOff(midi);
+    heldKeys.delete(midi);
+    if (scheduler.getTransport() === "recording") {
+      eventStore.noteOff(midi, scheduler.recordingNowMs());
+    }
+  }
+
+  function handleNote(midi, velocity, isOn) {
     if (!canPlayLive()) {
       if (isOn && scheduler.getTransport() === "playing") {
-        await engine.unlock();
-        if (isOn) {
-          engine.noteOn(midi, velocity);
-          heldKeys.add(midi);
-        }
+        ensureAudioReady()
+          .then(() => playNote(midi, velocity))
+          .catch(() => {});
       }
       return;
     }
 
-    await engine.unlock();
-
-    if (isOn) {
-      engine.noteOn(midi, velocity);
-      heldKeys.add(midi);
-      if (scheduler.getTransport() === "recording") {
-        eventStore.noteOn(midi, scheduler.recordingNowMs(), velocity);
-      }
-    } else {
-      engine.noteOff(midi);
-      heldKeys.delete(midi);
-      if (scheduler.getTransport() === "recording") {
-        eventStore.noteOff(midi, scheduler.recordingNowMs());
-      }
-    }
-    emit();
+    ensureAudioReady()
+      .then(() => {
+        if (isOn) playNote(midi, velocity);
+        else stopNote(midi);
+        emit();
+      })
+      .catch((err) => {
+        console.error("Audio not ready", err);
+      });
   }
 
   async function initMidi() {
     if (!navigator.requestMIDIAccess) return;
     try {
-      midiAccess = await navigator.requestMIDIAccess();
+      const midiAccess = await navigator.requestMIDIAccess();
       midiAccess.inputs.forEach((input) => {
         input.onmidimessage = (msg) => {
           const [status, note, vel] = msg.data;
@@ -62,6 +86,7 @@ export function createController({ engine, eventStore, scheduler, onChange }) {
 
   return {
     handleNote,
+    ensureAudioReady,
     initMidi,
 
     startRecording() {
@@ -93,8 +118,4 @@ export function createController({ engine, eventStore, scheduler, onChange }) {
       return heldKeys;
     },
   };
-}
-
-export function createSchedulerPair(engine, eventStore) {
-  return createScheduler(engine, eventStore);
 }

@@ -1,4 +1,4 @@
-import { renderKeyboard, highlightKeys } from "../piano-keyboard.js";
+import { renderKeyboard } from "../piano-keyboard.js";
 import { createEngine } from "../piano-engine.js";
 import { createEmptyProject, createEventStore } from "./piano-event-store.js";
 import { downloadProject, parseProject, readFileAsText, errorMessage } from "./piano-project-io.js";
@@ -51,7 +51,7 @@ async function loadVersionBadge() {
       document.querySelector('meta[name="piano-app-version"]')?.setAttribute("content", manifest.version);
     }
   } catch {
-    /* offline / file:// — keep meta version */
+    /* offline / file:// */
   }
 }
 
@@ -98,23 +98,23 @@ function refreshUI() {
   if (transport === "recording") els.status.textContent = i18n.t("status.recording");
   else if (transport === "playing") els.status.textContent = i18n.t("status.playing");
   else els.status.textContent = engine.isLoaded() ? i18n.t("status.ready") : i18n.t("status.loading");
-
-  highlightKeys(els.keyboardHost, controller.getHeldKeys());
 }
 
 function noteLabel(midi) {
   return Tone.Frequency(midi, "midi").toNote();
 }
 
-renderKeyboard(els.keyboardHost, {
+const keyboard = renderKeyboard(els.keyboardHost, {
   onNoteDown: (midi, vel) => controller.handleNote(midi, vel, true),
   onNoteUp: (midi) => controller.handleNote(midi, 64, false),
+  onFirstInteraction: () => controller.ensureAudioReady().catch(() => {}),
   labelFor: noteLabel,
 });
 
 els.btnNew.addEventListener("click", () => {
   if (!confirm(i18n.t("confirm.new"))) return;
   scheduler.stopPlayback();
+  keyboard?.releaseAll();
   eventStore.reset();
   refreshUI();
 });
@@ -133,6 +133,7 @@ els.fileInput.addEventListener("change", async () => {
       return;
     }
     scheduler.stopPlayback();
+    keyboard?.releaseAll();
     eventStore.setProject(result.project);
     refreshUI();
   } catch (e) {
@@ -145,28 +146,24 @@ els.btnSave.addEventListener("click", () => {
 });
 
 els.btnRecord.addEventListener("click", async () => {
-  await engine.unlock();
+  await controller.ensureAudioReady();
   eventStore.reset(eventStore.getTitle());
   controller.startRecording();
 });
 
-els.btnStopRec.addEventListener("click", () => controller.stopRecording());
+els.btnStopRec.addEventListener("click", () => {
+  keyboard?.releaseAll();
+  controller.stopRecording();
+});
 
 els.btnPlay.addEventListener("click", async () => {
-  await engine.unlock();
+  keyboard?.releaseAll();
+  await controller.ensureAudioReady();
   controller.startPlayback();
   refreshUI();
 });
 
 els.btnStopPlay.addEventListener("click", () => controller.stopPlayback());
-
-document.body.addEventListener(
-  "pointerdown",
-  () => {
-    engine.unlock().catch(() => {});
-  },
-  { once: false }
-);
 
 loadVersionBadge();
 initFullscreen();

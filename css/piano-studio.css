@@ -217,6 +217,8 @@ body {
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.05s ease, filter 0.05s ease;
 }
 
 .piano-key-white {
@@ -229,8 +231,9 @@ body {
 }
 
 .piano-key-white.pressed {
-  background: linear-gradient(180deg, var(--accent) 0%, #34d399 100%);
-  border-color: var(--accent);
+  background: linear-gradient(180deg, #6ee7b7 0%, var(--accent) 100%);
+  border-color: var(--accent-dim);
+  filter: brightness(1.04);
 }
 
 .piano-key-black {
@@ -247,8 +250,9 @@ body {
 }
 
 .piano-key-black.pressed {
-  background: linear-gradient(180deg, #6ee7b7 0%, #059669 100%);
+  background: linear-gradient(180deg, #6ee7b7 0%, var(--accent-dim) 100%);
   border-color: var(--accent);
+  filter: brightness(1.06);
 }
 
 .piano-key-oct {
@@ -259,6 +263,15 @@ body {
   font-size: 0.55rem;
   opacity: 0.65;
   pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .piano-keyboard {
+    --pk-white-w: 20px;
+    --pk-white-h: 128px;
+    --pk-black-w: 12px;
+    --pk-black-h: 76px;
+  }
 }
 
 @media (min-width: 900px) {
