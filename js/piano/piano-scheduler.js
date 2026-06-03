@@ -45,8 +45,10 @@ export function createScheduler(engine, eventStore) {
       return transport === "recording" ? nowRecordingMs() : 0;
     },
 
-    async startPlayback(onEnd, hooks = {}) {
+    async startPlayback(onEnd, hooks = {}, options = {}) {
       if (transport !== "idle") return false;
+      const practice = options.practice === true;
+
       await engine.unlock();
       transport = "playing";
       onPlaybackEnd = onEnd;
@@ -63,23 +65,21 @@ export function createScheduler(engine, eventStore) {
       }
 
       const startAt = performance.now() + 80;
-      hooks.onPlaybackStart?.(events, startAt);
+      hooks.onPlaybackStart?.(events, startAt, { practice, mode: practice ? "practice" : "enjoy" });
 
-      const baseAudio = Tone.now() + 0.08;
-      const now = performance.now();
+      if (!practice) {
+        const baseAudio = Tone.now() + 0.08;
+        const now = performance.now();
 
-      events.forEach((ev) => {
-        const offMs = ev.offMs ?? ev.onMs + 80;
-        engine.noteOn(ev.midi, ev.velocity, baseAudio + ev.onMs / 1000);
-        engine.noteOff(ev.midi, baseAudio + offMs / 1000);
+        events.forEach((ev) => {
+          const offMs = ev.offMs ?? ev.onMs + 80;
+          engine.noteOff(ev.midi, baseAudio + offMs / 1000);
 
-        visualTimers.push(
-          setTimeout(() => hooks.onNoteOn?.(ev.midi, ev.velocity), Math.max(0, startAt + ev.onMs - now))
-        );
-        visualTimers.push(
-          setTimeout(() => hooks.onNoteOff?.(ev.midi), Math.max(0, startAt + offMs - now))
-        );
-      });
+          visualTimers.push(
+            setTimeout(() => hooks.onNoteOff?.(ev.midi), Math.max(0, startAt + offMs - now))
+          );
+        });
+      }
 
       playbackEndTimer = setTimeout(() => {
         if (transport !== "playing") return;

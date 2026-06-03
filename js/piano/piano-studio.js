@@ -9,6 +9,7 @@ import { createI18n, resolveLang } from "./piano-i18n.js";
 import { createKeyboardNav } from "./piano-keyboard-nav.js";
 import { installAppGuards, registerServiceWorker } from "./piano-app-guard.js";
 import { createFallingNotesLane } from "./piano-falling-notes.js";
+import { createPracticeSession, createJudgeHud, JUDGE } from "./piano-practice.js";
 
 const APP_VERSION = document.querySelector('meta[name="piano-app-version"]')?.content || "0.1.0";
 
@@ -26,6 +27,7 @@ const els = {
   btnStopRec: document.getElementById("btnStopRec"),
   btnPlay: document.getElementById("btnPlay"),
   btnStopPlay: document.getElementById("btnStopPlay"),
+  btnPlayMode: document.getElementById("btnPlayMode"),
   btnOpenScore: document.getElementById("btnOpenScore"),
   btnDemoScore: document.getElementById("btnDemoScore"),
   btnFullscreen: document.getElementById("btnFullscreen"),
@@ -48,7 +50,20 @@ const engine = createEngine();
 const samplesLoadPromise = engine.ensureLoaded();
 const eventStore = createEventStore(createEmptyProject("新演奏", APP_VERSION));
 const scheduler = createScheduler(engine, eventStore);
-const controller = createController({ engine, eventStore, scheduler, onChange: refreshUI });
+
+/** enjoy = 欣赏（自动击键）；practice = 练习（手动击键 + 评分） */
+let playMode = "enjoy";
+let practiceSession = null;
+let judgeHud = null;
+
+const controller = createController({
+  engine,
+  eventStore,
+  scheduler,
+  onChange: refreshUI,
+  getPlayMode: () => playMode,
+  onPracticeHit: (midi) => handlePracticeHit(midi),
+});
 
 let scoreLoadedHint = false;
 let keyboardNav = null;
@@ -76,6 +91,40 @@ async function loadVersionBadge() {
   } catch {
     /* offline / file:// */
   }
+}
+
+function syncPlayModeButton() {
+  if (!els.btnPlayMode) return;
+  const practice = playMode === "practice";
+  els.btnPlayMode.textContent = i18n.t(practice ? "mode.practice" : "mode.enjoy");
+  els.btnPlayMode.classList.toggle("active", practice);
+  els.btnPlayMode.title = i18n.t(practice ? "mode.practiceHint" : "mode.enjoyHint");
+}
+
+function resetPracticeSession() {
+  const events = eventStore.getProject().session.events;
+  practiceSession = events.length ? createPracticeSession(events.length) : null;
+  judgeHud?.clear();
+}
+
+function handlePracticeHit(midi) {
+  if (playMode !== "practice" || scheduler.getTransport() !== "playing") return;
+
+  const active = fallingNotes?.findActiveBlock(midi);
+  if (!active || !practiceSession) {
+    judgeHud?.flash(JUDGE.MISS);
+    return;
+  }
+
+  const { block, topY, lineY, size } = active;
+  if (block.judged) return;
+
+  const result = practiceSession.judgeHit(topY, lineY, size);
+  block.judged = true;
+  fallingNotes.markJudged(block);
+  judgeHud?.flash(result.judge);
+  keyboard?.pressVisual(midi);
+  window.setTimeout(() => keyboard?.releaseVisual(midi), 120);
 }
 
 function initFullscreen() {
@@ -127,14 +176,19 @@ function refreshUI() {
   const idle = transport === "idle";
   if (els.btnOpenScore) els.btnOpenScore.disabled = !idle;
   if (els.btnDemoScore) els.btnDemoScore.disabled = !idle;
+  if (els.btnPlayMode) els.btnPlayMode.disabled = !idle;
 
   els.btnRecord?.classList.toggle("active", transport === "recording");
 
   if (!els.status) return;
   if (transport === "recording") els.status.textContent = i18n.t("status.recording");
-  else if (transport === "playing") els.status.textContent = i18n.t("status.playing");
-  else if (scoreLoadedHint) els.status.textContent = i18n.t("status.scoreLoaded");
-  else els.status.textContent = engine.isLoaded() ? i18n.t("status.ready") : i18n.t("status.loadingSamples");
+  else if (transport === "playing") {
+    els.status.textContent =
+      playMode === "practice" ? i18n.t("status.practicePlaying") : i18n.t("status.playing");
+  } else if (scoreLoadedHint) {
+    els.status.textContent =
+      playMode === "practice" ? i18n.t("status.scorePractice") : i18n.t("status.scoreLoaded");
+  } else els.status.textContent = engine.isLoaded() ? i18n.t("status.ready") : i18n.t("status.loadingSamples");
 }
 
 function noteLabel(midi) {
@@ -147,6 +201,7 @@ function importScoreProject(project) {
   keyboard?.releaseAll();
   eventStore.setProject(project);
   scoreLoadedHint = true;
+  resetPracticeSession();
   refreshUI();
 }
 
@@ -159,7 +214,6 @@ async function loadScoreText(text) {
   importScoreProject(result.project);
 }
 
-/** click + pointerup so taps work on mobile even when click synthesis is flaky */
 function bindPress(el, handler) {
   if (!el) return;
   let lastFire = 0;
@@ -175,6 +229,34 @@ function bindPress(el, handler) {
   el.addEventListener("pointerup", fire);
 }
 
+function onBlockMiss() {
+  if (!practiceSession) return;
+  practiceSession.recordMiss();
+  judgeHud?.flash(JUDGE.MISS);
+}
+
+function startFallingNotes(events, startAt, practice) {
+  fallingNotes?.setMode(practice ? "practice" : "enjoy");
+  fallingNotes?.start(events, startAt, {
+    mode: practice ? "practice" : "enjoy",
+    onBlockMiss: practice ? onBlockMiss : null,
+  });
+}
+
+function onEnjoyCenterHit(midi, velocity) {
+  engine.noteOn(midi, velocity ?? 96);
+  keyboard?.pressVisual(midi);
+  window.setTimeout(() => keyboard?.releaseVisual(midi), 100);
+}
+
+function onPlaybackFinished() {
+  if (playMode === "practice" && practiceSession) {
+    judgeHud?.showTotal(practiceSession.getScore(), 100, i18n.lang === "en" ? "Score" : "总分");
+    if (els.status) els.status.textContent = i18n.t("status.practiceDone");
+  }
+  refreshUI();
+}
+
 let playbackVisualHooks = null;
 
 function bindUi() {
@@ -185,6 +267,7 @@ function bindUi() {
     keyboard?.releaseAll();
     eventStore.reset();
     scoreLoadedHint = false;
+    resetPracticeSession();
     refreshUI();
   });
 
@@ -206,6 +289,7 @@ function bindUi() {
       keyboard?.releaseAll();
       eventStore.setProject(result.project);
       scoreLoadedHint = false;
+      resetPracticeSession();
       refreshUI();
     } catch (e) {
       alert(String(e.message || e));
@@ -214,6 +298,13 @@ function bindUi() {
 
   bindPress(els.btnSave, () => {
     downloadProject(eventStore.getProject());
+  });
+
+  bindPress(els.btnPlayMode, () => {
+    playMode = playMode === "practice" ? "enjoy" : "practice";
+    fallingNotes?.setMode(playMode);
+    syncPlayModeButton();
+    refreshUI();
   });
 
   bindPress(els.btnOpenScore, () => els.scoreFileInput?.click());
@@ -244,6 +335,7 @@ function bindUi() {
     await controller.ensureAudioReady();
     eventStore.reset(eventStore.getTitle());
     scoreLoadedHint = false;
+    resetPracticeSession();
     controller.startRecording();
   });
 
@@ -255,15 +347,21 @@ function bindUi() {
   bindPress(els.btnPlay, async () => {
     fallingNotes?.stop();
     keyboard?.releaseAll();
+    judgeHud?.clear();
     await controller.ensureAudioReady();
-    scoreLoadedHint = false;
-    controller.startPlayback(playbackVisualHooks);
+    resetPracticeSession();
+    const practice = playMode === "practice";
+    controller.startPlayback(playbackVisualHooks, { practice });
     refreshUI();
   });
 
-  bindPress(els.btnStopPlay, () => controller.stopPlayback());
+  bindPress(els.btnStopPlay, () => {
+    controller.stopPlayback();
+    judgeHud?.clear();
+  });
 
   initFullscreen();
+  syncPlayModeButton();
 }
 
 bindUi();
@@ -280,18 +378,23 @@ keyboard = renderKeyboard(els.keyboardHost, {
 });
 
 playbackVisualHooks = {
-  onPlaybackStart: (events, startAt) => fallingNotes?.start(events, startAt),
+  onPlaybackStart: (events, startAt, meta) => {
+    startFallingNotes(events, startAt, meta?.practice === true);
+  },
   onPlaybackStop: () => {
     fallingNotes?.stop();
     keyboard?.releaseAllVisual();
   },
-  onNoteOn: (midi) => keyboard?.pressVisual(midi),
   onNoteOff: (midi) => keyboard?.releaseVisual(midi),
 };
 
 try {
   if (keyboard && els.fallNotesStage) {
-    fallingNotes = createFallingNotesLane(keyboard, els.fallNotesStage);
+    judgeHud = createJudgeHud(els.fallNotesStage);
+    fallingNotes = createFallingNotesLane(keyboard, els.fallNotesStage, {
+      onCenterHit: onEnjoyCenterHit,
+      onPlaybackComplete: onPlaybackFinished,
+    });
   }
 } catch (err) {
   console.error("Falling notes init failed", err);

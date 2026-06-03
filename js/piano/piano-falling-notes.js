@@ -1,6 +1,6 @@
 /**
- * 落块视觉：卷轴下方大落块区 → 判定线（距琴键约一块高）→ 琴键
- * 方块落点与琴键按下由 scheduler 统一计时，此处只做动画
+ * 落块视觉：恒定下落速度，方块中心过判定线时击键（欣赏模式）
+ * 练习模式：仅落块 + 位置查询，供玩家手动击键评分
  */
 import { isBlackKey, KEY_SIZE_PRESETS, DEFAULT_KEY_SIZE_INDEX } from "../piano-keyboard.js";
 
@@ -8,12 +8,17 @@ const MIN_KEY_W = KEY_SIZE_PRESETS[0].w;
 const BLOCK_SCALE = 1.2;
 const SCROLL_LERP = 0.055;
 const DEFAULT_BLOCK_GAP = Math.round(KEY_SIZE_PRESETS[DEFAULT_KEY_SIZE_INDEX].w * BLOCK_SCALE);
+/** 每块从顶缘到中心过线的固定下落时长（ms） */
+const FALL_LEAD_MS = 2400;
 
-export function createFallingNotesLane(keyboard, stageEl) {
+export function createFallingNotesLane(keyboard, stageEl, opts = {}) {
   if (!keyboard?.scrollEl || !keyboard?.boardEl || !stageEl) return null;
 
   const scroll = keyboard.scrollEl;
   const board = keyboard.boardEl;
+  let mode = "enjoy";
+  let onCenterHit = opts.onCenterHit ?? null;
+  let onPlaybackComplete = opts.onPlaybackComplete ?? null;
 
   stageEl.innerHTML = "";
   stageEl.classList.add("fall-notes-stage--active");
@@ -35,8 +40,9 @@ export function createFallingNotesLane(keyboard, stageEl) {
   let playing = false;
   let startAt = 0;
   let blocks = [];
-  const hitTimers = [];
   let followMidi = null;
+  let lineY = 0;
+  let playbackEndMs = 0;
 
   function blockSize(keyWidth) {
     return Math.max(MIN_KEY_W, Math.round(keyWidth * BLOCK_SCALE));
@@ -55,17 +61,51 @@ export function createFallingNotesLane(keyboard, stageEl) {
     track.style.transform = `translateX(${boardRect.left - stageRect.left}px)`;
   }
 
-  /** 判定线：琴键顶缘上方约一块高度；落块道顶 = 卷轴下缘 */
   function syncLayout() {
     syncTrackAlign();
     const boardRect = board.getBoundingClientRect();
     const stageRect = stageEl.getBoundingClientRect();
     const gap = gapAboveKeys();
-
     const lineTopInStage = boardRect.top - stageRect.top - gap;
     hitLine.style.top = `${Math.max(8, lineTopInStage)}px`;
+    lineY = Math.max(16, lineTopInStage - 2);
+    return lineY;
+  }
 
-    return Math.max(16, lineTopInStage - 2);
+  function computeBlockMeta(ev, size) {
+    const onMs = ev.onMs;
+    const targetTop = Math.max(8, lineY - size / 2);
+    const virtualSpawnMs = onMs - FALL_LEAD_MS;
+    const spawnMs = Math.max(0, virtualSpawnMs);
+
+    return {
+      id: ev.id ?? `${ev.midi}-${onMs}`,
+      midi: ev.midi,
+      velocity: ev.velocity ?? 96,
+      onMs,
+      offMs: ev.offMs ?? onMs + 80,
+      virtualSpawnMs,
+      spawnMs,
+      fallDuration: FALL_LEAD_MS,
+      targetTop,
+      size,
+    };
+  }
+
+  /** 恒定下落：virtualSpawn 可为负，开头音符视为已在途中 */
+  function blockProgress(block, elapsed) {
+    const t = elapsed - block.virtualSpawnMs;
+    if (t <= 0) return 0;
+    if (t >= block.fallDuration) return 1;
+    return t / block.fallDuration;
+  }
+
+  function blockTopY(block, elapsed) {
+    return blockProgress(block, elapsed) * block.targetTop;
+  }
+
+  function blockCenterY(block, elapsed) {
+    return blockTopY(block, elapsed) + block.size / 2;
   }
 
   function targetScrollForMidi(midi) {
@@ -76,7 +116,7 @@ export function createFallingNotesLane(keyboard, stageEl) {
   }
 
   function updateScrollFollow(elapsed) {
-    const active = blocks.find((b) => !b.removed && !b.hit && elapsed >= b.spawnMs);
+    const active = blocks.find((b) => !b.removed && !b.resolved && elapsed >= b.spawnMs);
     if (!active) return;
 
     if (followMidi !== active.midi) followMidi = active.midi;
@@ -98,16 +138,10 @@ export function createFallingNotesLane(keyboard, stageEl) {
     return el;
   }
 
-  function triggerBlockHit(block) {
-    if (block.removed || block.hit) return;
-    block.hit = true;
-    if (followMidi === block.midi) followMidi = null;
-
+  function flashBlock(block) {
     const geom = keyboard.getKeyGeometry?.(block.midi);
     if (geom) {
-      const size = blockSize(geom.width);
-      const x = geom.centerX - size / 2;
-      const lineY = syncLayout();
+      const x = geom.centerX - block.size / 2;
       block.el.style.setProperty("--fx", `${x}px`);
       block.el.style.setProperty("--fy", `${lineY}px`);
     }
@@ -118,39 +152,77 @@ export function createFallingNotesLane(keyboard, stageEl) {
     }, 180);
   }
 
-  function layoutBlock(block, elapsed, lineY) {
+  function resolveBlock(block, elapsed) {
+    if (block.resolved) return;
+    block.resolved = true;
+    flashBlock(block);
+    if (followMidi === block.midi) followMidi = null;
+  }
+
+  function layoutBlock(block, elapsed, progress = blockProgress(block, elapsed)) {
     const geom = keyboard.getKeyGeometry?.(block.midi);
     if (!geom) return;
 
-    const size = blockSize(geom.width);
-    const fallDuration = Math.max(1, block.onMs - block.spawnMs);
-    const progress = Math.max(0, Math.min(1, (elapsed - block.spawnMs) / fallDuration));
-    const y = progress * lineY;
-    const x = geom.centerX - size / 2;
+    const topY = progress * block.targetTop;
+    const x = geom.centerX - block.size / 2;
 
-    block.el.style.width = `${size}px`;
-    block.el.style.height = `${size}px`;
-    block.el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    block.el.style.width = `${block.size}px`;
+    block.el.style.height = `${block.size}px`;
+    block.el.style.transform = `translate3d(${x}px, ${topY}px, 0)`;
     block.el.style.zIndex = geom.isBlack ? "3" : "2";
+    block.topY = topY;
   }
 
   function tick() {
     if (!playing) return;
-    const lineY = syncLayout();
+    syncLayout();
     const elapsed = Math.max(0, performance.now() - startAt);
     updateScrollFollow(elapsed);
 
     for (const block of blocks) {
       if (block.removed) continue;
-      if (elapsed < block.spawnMs) {
+
+      const progress = blockProgress(block, elapsed);
+      if (progress <= 0) {
         block.el.style.opacity = "0";
         continue;
       }
+
       block.el.style.opacity = "1";
-      if (!block.hit) layoutBlock(block, elapsed, lineY);
+      if (block.resolved) continue;
+
+      layoutBlock(block, elapsed, progress);
+      const centerY = block.topY + block.size / 2;
+
+      if (!block.centerHit && progress >= 1) {
+        block.centerHit = true;
+        if (mode === "enjoy") {
+          onCenterHit?.(block.midi, block.velocity, block);
+        }
+        resolveBlock(block, elapsed);
+      } else if (mode === "practice" && !block.judged && block.topY > lineY + block.size / 2) {
+        block.judged = true;
+        block.onMiss?.(block);
+        resolveBlock(block, elapsed);
+      }
     }
 
-    rafId = requestAnimationFrame(tick);
+    if (elapsed >= playbackEndMs && playing) {
+      playing = false;
+      finalizeUnjudged();
+      onPlaybackComplete?.();
+    }
+
+    if (playing) rafId = requestAnimationFrame(tick);
+  }
+
+  function finalizeUnjudged() {
+    for (const block of blocks) {
+      if (block.judged || block.removed) continue;
+      block.judged = true;
+      block.onMiss?.(block);
+      if (!block.resolved) resolveBlock(block, playbackEndMs);
+    }
   }
 
   function clearAll() {
@@ -158,17 +230,26 @@ export function createFallingNotesLane(keyboard, stageEl) {
     followMidi = null;
     if (rafId) cancelAnimationFrame(rafId);
     rafId = 0;
-    hitTimers.forEach((id) => clearTimeout(id));
-    hitTimers.length = 0;
     blocks.forEach((b) => b.el.remove());
     blocks = [];
+    playbackEndMs = 0;
   }
 
-  function scheduleHits(playbackStartAt) {
-    for (const block of blocks) {
-      const delay = Math.max(0, playbackStartAt + block.onMs - performance.now());
-      hitTimers.push(window.setTimeout(() => triggerBlockHit(block), delay));
-    }
+  function buildBlocks(events) {
+    lineY = syncLayout();
+    return events.map((ev, i) => {
+      const geom = keyboard.getKeyGeometry?.(ev.midi);
+      const size = geom ? blockSize(geom.width) : blockSize(DEFAULT_BLOCK_GAP);
+      const meta = computeBlockMeta({ ...ev, id: ev.id ?? `n${i}` }, size);
+      return {
+        ...meta,
+        el: createBlockEl(isBlackKey(ev.midi)),
+        centerHit: false,
+        resolved: false,
+        judged: false,
+        onMiss: null,
+      };
+    });
   }
 
   const onScroll = () => syncLayout();
@@ -181,27 +262,65 @@ export function createFallingNotesLane(keyboard, stageEl) {
   syncLayout();
 
   return {
-    start(events, playbackStartAt) {
+    setMode(next) {
+      mode = next === "practice" ? "practice" : "enjoy";
+    },
+
+    getMode() {
+      return mode;
+    },
+
+    setCallbacks(cbs = {}) {
+      onCenterHit = cbs.onCenterHit ?? onCenterHit;
+      onPlaybackComplete = cbs.onPlaybackComplete ?? onPlaybackComplete;
+    },
+
+    getLineY() {
+      return syncLayout();
+    },
+
+    /** 练习模式：找该键最近且未判定的块 */
+    findActiveBlock(midi) {
+      if (!playing) return null;
+      const elapsed = Math.max(0, performance.now() - startAt);
+      const candidates = blocks.filter(
+        (b) => b.midi === midi && !b.judged && !b.removed && elapsed >= b.spawnMs && !b.resolved
+      );
+      if (!candidates.length) return null;
+
+      let best = candidates[0];
+      let bestDist = Math.abs(blockCenterY(best, elapsed) - lineY);
+      for (let i = 1; i < candidates.length; i += 1) {
+        const d = Math.abs(blockCenterY(candidates[i], elapsed) - lineY);
+        if (d < bestDist) {
+          best = candidates[i];
+          bestDist = d;
+        }
+      }
+      return { block: best, topY: blockTopY(best, elapsed), lineY, size: best.size, elapsed };
+    },
+
+    markJudged(block) {
+      block.judged = true;
+      resolveBlock(block, performance.now() - startAt);
+    },
+
+    start(events, playbackStartAt, options = {}) {
       clearAll();
       if (!events?.length) return;
 
+      mode = options.mode === "practice" ? "practice" : "enjoy";
       playing = true;
       startAt = playbackStartAt;
       followMidi = null;
-      syncLayout();
 
-      const leadMs = Math.max(1200, syncLayout() * 8);
+      blocks = buildBlocks(events);
+      playbackEndMs = Math.max(...blocks.map((b) => b.offMs)) + 400;
 
-      blocks = events.map((ev) => ({
-        midi: ev.midi,
-        onMs: ev.onMs,
-        spawnMs: Math.max(0, ev.onMs - leadMs),
-        el: createBlockEl(isBlackKey(ev.midi)),
-        hit: false,
-        removed: false,
-      }));
+      for (const block of blocks) {
+        block.onMiss = options.onBlockMiss ?? null;
+      }
 
-      scheduleHits(playbackStartAt);
       rafId = requestAnimationFrame(tick);
     },
 

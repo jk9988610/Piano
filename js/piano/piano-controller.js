@@ -1,6 +1,6 @@
 import { createScheduler } from "./piano-scheduler.js";
 
-export function createController({ engine, eventStore, scheduler, onChange }) {
+export function createController({ engine, eventStore, scheduler, onChange, getPlayMode, onPracticeHit }) {
   const heldKeys = new Set();
   let audioReady = false;
   let audioReadyPromise = null;
@@ -25,8 +25,13 @@ export function createController({ engine, eventStore, scheduler, onChange }) {
     return audioReadyPromise;
   }
 
+  function isPracticePlaying() {
+    return getPlayMode?.() === "practice" && scheduler.getTransport() === "playing";
+  }
+
   function canPlayLive() {
     const t = scheduler.getTransport();
+    if (isPracticePlaying()) return true;
     return t === "idle" || t === "recording";
   }
 
@@ -47,6 +52,20 @@ export function createController({ engine, eventStore, scheduler, onChange }) {
   }
 
   function handleNote(midi, velocity, isOn) {
+    if (isPracticePlaying()) {
+      if (isOn) {
+        onPracticeHit?.(midi, velocity);
+        ensureAudioReady()
+          .then(() => playNote(midi, velocity))
+          .catch(() => {});
+      } else {
+        ensureAudioReady()
+          .then(() => stopNote(midi))
+          .catch(() => {});
+      }
+      return;
+    }
+
     if (!canPlayLive()) {
       if (isOn && scheduler.getTransport() === "playing") {
         ensureAudioReady()
@@ -102,10 +121,10 @@ export function createController({ engine, eventStore, scheduler, onChange }) {
       emit();
     },
 
-    startPlayback(hooks) {
+    startPlayback(hooks, options) {
       heldKeys.forEach((m) => engine.noteOff(m));
       heldKeys.clear();
-      return scheduler.startPlayback(() => emit(), hooks);
+      return scheduler.startPlayback(() => emit(), hooks, options);
     },
 
     stopPlayback() {
