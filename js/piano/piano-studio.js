@@ -79,15 +79,13 @@ function formatVersionLabel(manifest) {
 
 async function loadVersionBadge() {
   if (!els.version) return;
-  els.version.textContent = `v${APP_VERSION}`;
+  els.version.textContent = formatVersionLabel({ version: APP_VERSION });
   try {
     const res = await fetch(`version.json?v=${encodeURIComponent(APP_VERSION)}`, { cache: "no-store" });
     if (!res.ok) return;
     const manifest = await res.json();
+    if (manifest.version !== APP_VERSION) return;
     els.version.textContent = formatVersionLabel(manifest);
-    if (manifest.version) {
-      document.querySelector('meta[name="piano-app-version"]')?.setAttribute("content", manifest.version);
-    }
   } catch {
     /* offline / file:// */
   }
