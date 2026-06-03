@@ -42,6 +42,25 @@ export function createPracticeSession(noteCount) {
     return { judge: JUDGE.MISS, points: 0 };
   }
 
+  function getStats() {
+    let perfect = 0;
+    let good = 0;
+    let miss = 0;
+    for (const r of results) {
+      if (r.judge === JUDGE.PERFECT) perfect += 1;
+      else if (r.judge === JUDGE.GOOD) good += 1;
+      else miss += 1;
+    }
+    return {
+      score: Math.round(score * 10) / 10,
+      judgedCount,
+      total: count,
+      perfect,
+      good,
+      miss,
+    };
+  }
+
   return {
     getScore() {
       return score;
@@ -65,18 +84,33 @@ export function createPracticeSession(noteCount) {
     },
 
     getSummary() {
-      return { score: Math.round(score * 10) / 10, total: 100, notes: count, results };
+      return { ...getStats(), notes: count, results };
     },
+
+    getStats,
   };
 }
 
 export function createJudgeHud(stageEl) {
-  if (!stageEl) return { flash() {}, showTotal() {}, clear() {}, destroy() {} };
+  const noop = {
+    flash() {},
+    showTotal() {},
+    updateRunning() {},
+    clear() {},
+    destroy() {},
+  };
+  if (!stageEl) return noop;
+
+  const scoreBar = document.createElement("div");
+  scoreBar.className = "practice-score-bar";
+  scoreBar.setAttribute("aria-live", "polite");
 
   const hud = document.createElement("div");
   hud.className = "practice-judge-hud";
   hud.setAttribute("aria-live", "polite");
+
   stageEl.prepend(hud);
+  stageEl.prepend(scoreBar);
 
   let hideTimer = 0;
 
@@ -89,6 +123,11 @@ export function createJudgeHud(stageEl) {
     }, 900);
   }
 
+  function formatRunning(stats, lang) {
+    const label = lang === "en" ? "Score" : "得分";
+    return `${label} ${stats.score} / 100 · ${stats.judgedCount}/${stats.total} · P${stats.perfect} G${stats.good} M${stats.miss}`;
+  }
+
   return {
     flash(judge) {
       if (judge === JUDGE.PERFECT) show("Perfect !!!", "perfect");
@@ -96,22 +135,39 @@ export function createJudgeHud(stageEl) {
       else show("Miss !", "miss");
     },
 
-    showTotal(score, max = 100, label = "总分") {
+    updateRunning(stats, lang = "zh") {
+      if (!stats) return;
+      scoreBar.textContent = formatRunning(stats, lang);
+      scoreBar.classList.add("practice-score-bar--show");
+    },
+
+    showTotal(score, max = 100, label = "总分", stats = null) {
       window.clearTimeout(hideTimer);
       const rounded = Math.round(score * 10) / 10;
-      hud.textContent = `${label} ${rounded} / ${max}`;
+      let text = `${label} ${rounded} / ${max}`;
+      if (stats) {
+        text += ` · Perfect ${stats.perfect} · Good ${stats.good} · Miss ${stats.miss}`;
+      }
+      hud.textContent = text;
       hud.className = "practice-judge-hud practice-judge-hud--total practice-judge-hud--show";
+      if (stats) {
+        scoreBar.textContent = formatRunning(stats, label === "Score" ? "en" : "zh");
+        scoreBar.classList.add("practice-score-bar--show");
+      }
     },
 
     clear() {
       window.clearTimeout(hideTimer);
       hud.classList.remove("practice-judge-hud--show");
       hud.textContent = "";
+      scoreBar.classList.remove("practice-score-bar--show");
+      scoreBar.textContent = "";
     },
 
     destroy() {
       window.clearTimeout(hideTimer);
       hud.remove();
+      scoreBar.remove();
     },
   };
 }

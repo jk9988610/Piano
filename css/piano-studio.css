@@ -492,6 +492,28 @@ body {
 }
 
 
+.practice-score-bar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 29;
+  pointer-events: none;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fde68a;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 6px 10px;
+  border-radius: 8px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  white-space: nowrap;
+}
+
+.practice-score-bar--show {
+  opacity: 1;
+}
+
 .practice-judge-hud {
   position: absolute;
   top: 12px;
@@ -535,19 +557,7 @@ body {
   background: linear-gradient(180deg, var(--bg-panel) 0%, #14142a 40%, #101018 100%);
 }
 
-.fall-notes-stage--playing 
-.piano-note-spawn-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  margin: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
-  z-index: 11;
-  pointer-events: none;
-}
-
-.piano-note-hit-line {
+.fall-notes-stage--playing .piano-note-hit-line {
   box-shadow: 0 0 14px rgba(255, 255, 255, 0.55);
 }
 

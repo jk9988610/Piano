@@ -55,6 +55,7 @@ const scheduler = createScheduler(engine, eventStore);
 let playMode = "enjoy";
 let practiceSession = null;
 let judgeHud = null;
+let practiceResultShown = false;
 
 const controller = createController({
   engine,
@@ -62,7 +63,7 @@ const controller = createController({
   scheduler,
   onChange: refreshUI,
   getPlayMode: () => playMode,
-  onPracticeHit: () => handlePracticeHit(),
+  onPracticeHit: (midi, velocity) => handlePracticeHit(midi, velocity),
 });
 
 let scoreLoadedHint = false;
@@ -104,15 +105,37 @@ function syncPlayModeButton() {
 function resetPracticeSession() {
   const events = eventStore.getProject().session.events;
   practiceSession = events.length ? createPracticeSession(events.length) : null;
+  practiceResultShown = false;
   judgeHud?.clear();
 }
 
-function handlePracticeHit() {
+function updatePracticeHud() {
+  if (!practiceSession) return;
+  judgeHud?.updateRunning(practiceSession.getStats(), i18n.lang);
+}
+
+function showPracticeResult() {
+  if (playMode !== "practice" || !practiceSession || practiceResultShown) return;
+  practiceResultShown = true;
+  const stats = practiceSession.getStats();
+  const label = i18n.lang === "en" ? "Score" : "总分";
+  judgeHud?.showTotal(stats.score, 100, label, stats);
+  if (els.status) els.status.textContent = i18n.t("status.practiceDone");
+}
+
+async function handlePracticeHit(midi, velocity = 96) {
   if (playMode !== "practice" || scheduler.getTransport() !== "playing") return;
+
+  try {
+    await controller.ensureAudioReady();
+  } catch {
+    return;
+  }
 
   const active = fallingNotes?.findNearestBlock();
   if (!active || !practiceSession) {
     judgeHud?.flash(JUDGE.MISS);
+    engine.noteOn(midi, velocity);
     return;
   }
 
@@ -123,6 +146,8 @@ function handlePracticeHit() {
   block.judged = true;
   fallingNotes.markJudged(block);
   judgeHud?.flash(result.judge);
+  updatePracticeHud();
+  engine.noteOn(block.midi, block.velocity ?? velocity);
   keyboard?.pressVisual(block.midi);
   window.setTimeout(() => keyboard?.releaseVisual(block.midi), 120);
 }
@@ -233,6 +258,7 @@ function onBlockMiss() {
   if (!practiceSession) return;
   practiceSession.recordMiss();
   judgeHud?.flash(JUDGE.MISS);
+  updatePracticeHud();
 }
 
 function startFallingNotes(events, startAt, practice) {
@@ -241,6 +267,7 @@ function startFallingNotes(events, startAt, practice) {
     mode: practice ? "practice" : "enjoy",
     onBlockMiss: practice ? onBlockMiss : null,
   });
+  if (practice) updatePracticeHud();
 }
 
 function onEnjoyCenterHit(midi, velocity) {
@@ -250,10 +277,7 @@ function onEnjoyCenterHit(midi, velocity) {
 }
 
 function onPlaybackFinished() {
-  if (playMode === "practice" && practiceSession) {
-    judgeHud?.showTotal(practiceSession.getScore(), 100, i18n.lang === "en" ? "Score" : "总分");
-    if (els.status) els.status.textContent = i18n.t("status.practiceDone");
-  }
+  showPracticeResult();
   refreshUI();
 }
 
@@ -357,7 +381,6 @@ function bindUi() {
 
   bindPress(els.btnStopPlay, () => {
     controller.stopPlayback();
-    judgeHud?.clear();
   });
 
   initFullscreen();
@@ -379,9 +402,11 @@ keyboard = renderKeyboard(els.keyboardHost, {
 
 playbackVisualHooks = {
   onPlaybackStart: (events, startAt, meta) => {
+    practiceResultShown = false;
     startFallingNotes(events, startAt, meta?.practice === true);
   },
   onPlaybackStop: () => {
+    showPracticeResult();
     fallingNotes?.stop();
     keyboard?.releaseAllVisual();
   },

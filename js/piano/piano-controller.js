@@ -56,9 +56,6 @@ export function createController({ engine, eventStore, scheduler, onChange, getP
     if (isPracticePlaying()) {
       if (isOn) {
         onPracticeHit?.(midi, velocity);
-        ensureAudioReady()
-          .then(() => playNote(midi, velocity))
-          .catch(() => {});
       } else {
         ensureAudioReady()
           .then(() => stopNote(midi))
